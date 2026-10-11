@@ -1,6 +1,6 @@
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 DATABASE_FILE = "strategies.json"
 
@@ -44,7 +44,7 @@ def save_strategies(filepath, new_strategies):
     combined = existing + new_strategies
 
     payload = {
-        "last_updated": datetime.utcnow().isoformat() + "Z",
+        "last_updated": datetime.now(timezone.utc).isoformat(),
         "count": len(combined),
         "strategies": combined,
     }
