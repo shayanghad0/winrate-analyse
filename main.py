@@ -17,15 +17,19 @@ def load_existing_strategies(filepath):
         return []
 
 
-def collect_strategies():
-    """Prompt the user for strategies until an empty input is given."""
+def collect_strategies(start_index=1):
+    """Prompt the user for strategies until an empty input is given.
+
+    start_index is the number shown for the first new strategy,
+    so numbering continues from the existing database count.
+    """
     strategies = []
     print("Enter your strategies one by one.")
     print("Press ENTER on an empty line to save and exit.\n")
 
     while True:
         try:
-            entry = input(f"Strategy #{len(strategies) + 1}: ").strip()
+            entry = input(f"Strategy #{start_index + len(strategies)}: ").strip()
         except (EOFError, KeyboardInterrupt):
             print("\nInput interrupted. Saving collected strategies...")
             break
@@ -68,7 +72,14 @@ def save_strategies(filepath, new_strategies):
 
 
 def main():
-    strategies = collect_strategies()
+    existing = load_existing_strategies(DATABASE_FILE)
+    start_index = len(existing) + 1
+
+    if existing:
+        print(f"Database already has {len(existing)} strategy(ies).")
+        print(f"New entries will start at Strategy #{start_index}.\n")
+
+    strategies = collect_strategies(start_index=start_index)
 
     if not strategies:
         print("\nNo strategies entered. Nothing to save.")
