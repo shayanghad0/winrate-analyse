@@ -1,5 +1,5 @@
 {
-    "exported_at": "2026-10-11T14:20:38.106925+00:00",
+    "exported_at": "2026-10-11T14:21:23.977406+00:00",
     "account": {
         "login": 3405934,
         "server": "SarmayeGozareBartar-Real",
@@ -12,10 +12,80 @@
     "summary": {
         "total_trades": 32,
         "open_positions": 0,
-        "total_profit": 850.76,
-        "total_commission": -20.55,
-        "total_swap": 0.0,
-        "net_result": 830.21
+        "net_result": 830.21,
+        "win_rate": 56.25
+    },
+    "stats": {
+        "overall": {
+            "trades": 32,
+            "wins": 18,
+            "losses": 14,
+            "win_rate": 56.25,
+            "gross_profit": 1692.67,
+            "gross_loss": -862.46,
+            "net_profit": 830.21,
+            "avg_win": 94.04,
+            "avg_loss": -61.6
+        },
+        "by_symbol": {
+            "BTCUSD.x": {
+                "trades": 3,
+                "wins": 1,
+                "losses": 2,
+                "win_rate": 33.33,
+                "gross_profit": 9.5,
+                "gross_loss": -45.5,
+                "net_profit": -36.0,
+                "avg_win": 9.5,
+                "avg_loss": -22.75
+            },
+            "ETHUSD.x": {
+                "trades": 3,
+                "wins": 3,
+                "losses": 0,
+                "win_rate": 100.0,
+                "gross_profit": 2.59,
+                "gross_loss": 0,
+                "net_profit": 2.59,
+                "avg_win": 0.86,
+                "avg_loss": 0
+            },
+            "XAUUSD.x": {
+                "trades": 23,
+                "wins": 11,
+                "losses": 12,
+                "win_rate": 47.83,
+                "gross_profit": 1107.2,
+                "gross_loss": -816.96,
+                "net_profit": 290.24,
+                "avg_win": 100.65,
+                "avg_loss": -68.08
+            },
+            "XAGUSD.x": {
+                "trades": 3,
+                "wins": 3,
+                "losses": 0,
+                "win_rate": 100.0,
+                "gross_profit": 573.38,
+                "gross_loss": 0,
+                "net_profit": 573.38,
+                "avg_win": 191.13,
+                "avg_loss": 0
+            }
+        },
+        "by_strategy": {
+            "untagged": {
+                "trades": 32,
+                "wins": 18,
+                "losses": 14,
+                "win_rate": 56.25,
+                "gross_profit": 1692.67,
+                "gross_loss": -862.46,
+                "net_profit": 830.21,
+                "avg_win": 94.04,
+                "avg_loss": -61.6
+            }
+        }
     },
     "history": [
         {
@@ -34,6 +104,10 @@
             "profit": 9.5,
             "comment": "",
             "magic": 0,
+            "exit_reason": "manual",
+            "duration_seconds": 527,
+            "duration": "8m",
+            "strategy": null,
             "net_profit": 9.5
         },
         {
@@ -52,6 +126,10 @@
             "profit": -23.25,
             "comment": "[sl 85086.4]",
             "magic": 0,
+            "exit_reason": "manual",
+            "duration_seconds": 1186,
+            "duration": "19m",
+            "strategy": null,
             "net_profit": -23.25
         },
         {
@@ -70,6 +148,10 @@
             "profit": -22.25,
             "comment": "[sl 85087.6]",
             "magic": 0,
+            "exit_reason": "manual",
+            "duration_seconds": 1184,
+            "duration": "19m",
+            "strategy": null,
             "net_profit": -22.25
         },
         {
@@ -88,6 +170,10 @@
             "profit": 0.92,
             "comment": "",
             "magic": 0,
+            "exit_reason": "manual",
+            "duration_seconds": 14884,
+            "duration": "4h 8m",
+            "strategy": null,
             "net_profit": 0.92
         },
         {
@@ -106,6 +192,10 @@
             "profit": 0.92,
             "comment": "",
             "magic": 0,
+            "exit_reason": "manual",
+            "duration_seconds": 14883,
+            "duration": "4h 8m",
+            "strategy": null,
             "net_profit": 0.92
         },
         {
@@ -124,6 +214,10 @@
             "profit": 0.75,
             "comment": "",
             "magic": 0,
+            "exit_reason": "manual",
+            "duration_seconds": 14882,
+            "duration": "4h 8m",
+            "strategy": null,
             "net_profit": 0.75
         },
         {
@@ -133,8 +227,8 @@
             "volume": 2.42,
             "open_time": "2026-10-05 17:18:05",
             "open_price": 4126.4,
-            "sl": 0.0,
-            "tp": 0.0,
+            "sl": 4127.68,
+            "tp": 4125.33,
             "close_time": "2026-10-05 17:22:51",
             "close_price": 4130.27,
             "commission": -5.08,
@@ -142,6 +236,10 @@
             "profit": -468.27,
             "comment": "[sl 4130.14]",
             "magic": 0,
+            "exit_reason": "manual",
+            "duration_seconds": 286,
+            "duration": "4m",
+            "strategy": null,
             "net_profit": -473.35
         },
         {
@@ -151,8 +249,8 @@
             "volume": 0.46,
             "open_time": "2026-10-05 17:21:41",
             "open_price": 4129.1,
-            "sl": 0.0,
-            "tp": 0.0,
+            "sl": 4123.02,
+            "tp": 4138.43,
             "close_time": "2026-10-05 17:27:23",
             "close_price": 4128.79,
             "commission": -0.97,
@@ -160,6 +258,10 @@
             "profit": -7.13,
             "comment": "Cheragh Money Management",
             "magic": 0,
+            "exit_reason": "manual",
+            "duration_seconds": 342,
+            "duration": "5m",
+            "strategy": null,
             "net_profit": -8.1
         },
         {
@@ -169,8 +271,8 @@
             "volume": 1.22,
             "open_time": "2026-10-05 17:25:33",
             "open_price": 4131.02,
-            "sl": 0.0,
-            "tp": 0.0,
+            "sl": 4129.72,
+            "tp": 4132.08,
             "close_time": "2026-10-05 17:27:23",
             "close_price": 4128.79,
             "commission": -2.56,
@@ -178,6 +280,10 @@
             "profit": -136.03,
             "comment": "Cheragh Money Management",
             "magic": 0,
+            "exit_reason": "manual",
+            "duration_seconds": 110,
+            "duration": "1m",
+            "strategy": null,
             "net_profit": -138.59
         },
         {
@@ -187,8 +293,8 @@
             "volume": 1.2,
             "open_time": "2026-10-05 17:25:33",
             "open_price": 4130.85,
-            "sl": 0.0,
-            "tp": 0.0,
+            "sl": 4129.72,
+            "tp": 4133.26,
             "close_time": "2026-10-05 17:26:06",
             "close_price": 4129.61,
             "commission": -2.52,
@@ -196,6 +302,10 @@
             "profit": -74.4,
             "comment": "[sl 4129.72]",
             "magic": 0,
+            "exit_reason": "manual",
+            "duration_seconds": 33,
+            "duration": "33s",
+            "strategy": null,
             "net_profit": -76.92
         },
         {
@@ -205,8 +315,8 @@
             "volume": 0.42,
             "open_time": "2026-10-05 17:28:10",
             "open_price": 4129.9,
-            "sl": 0.0,
-            "tp": 0.0,
+            "sl": 4126.58,
+            "tp": 4133.32,
             "close_time": "2026-10-05 17:54:19",
             "close_price": 4135.78,
             "commission": -0.88,
@@ -214,6 +324,10 @@
             "profit": 122.94,
             "comment": "Cheragh Money Management",
             "magic": 0,
+            "exit_reason": "manual",
+            "duration_seconds": 1569,
+            "duration": "26m",
+            "strategy": null,
             "net_profit": 122.06
         },
         {
@@ -223,8 +337,8 @@
             "volume": 0.4,
             "open_time": "2026-10-05 17:28:11",
             "open_price": 4129.98,
-            "sl": 0.0,
-            "tp": 0.0,
+            "sl": 4126.58,
+            "tp": 4136.34,
             "close_time": "2026-10-05 17:54:18",
             "close_price": 4135.79,
             "commission": -0.84,
@@ -232,6 +346,10 @@
             "profit": 110.3,
             "comment": "Cheragh Money Management",
             "magic": 0,
+            "exit_reason": "manual",
+            "duration_seconds": 1567,
+            "duration": "26m",
+            "strategy": null,
             "net_profit": 109.46
         },
         {
@@ -241,8 +359,8 @@
             "volume": 0.34,
             "open_time": "2026-10-05 17:30:43",
             "open_price": 4129.13,
-            "sl": 0.0,
-            "tp": 0.0,
+            "sl": 4126.37,
+            "tp": 4131.95,
             "close_time": "2026-10-05 17:54:20",
             "close_price": 4135.8,
             "commission": -0.71,
@@ -250,6 +368,10 @@
             "profit": 112.32,
             "comment": "Cheragh Money Management",
             "magic": 0,
+            "exit_reason": "manual",
+            "duration_seconds": 1417,
+            "duration": "23m",
+            "strategy": null,
             "net_profit": 111.61
         },
         {
@@ -259,8 +381,8 @@
             "volume": 0.32,
             "open_time": "2026-10-05 17:30:43",
             "open_price": 4129.1,
-            "sl": 0.0,
-            "tp": 0.0,
+            "sl": 4126.37,
+            "tp": 4134.74,
             "close_time": "2026-10-05 17:54:05",
             "close_price": 4135.89,
             "commission": -0.67,
@@ -268,6 +390,10 @@
             "profit": 107.72,
             "comment": "Cheragh Money Management",
             "magic": 0,
+            "exit_reason": "manual",
+            "duration_seconds": 1402,
+            "duration": "23m",
+            "strategy": null,
             "net_profit": 107.05
         },
         {
@@ -277,8 +403,8 @@
             "volume": 0.32,
             "open_time": "2026-10-05 17:30:44",
             "open_price": 4129.09,
-            "sl": 0.0,
-            "tp": 0.0,
+            "sl": 4126.37,
+            "tp": 4135.22,
             "close_time": "2026-10-05 17:53:53",
             "close_price": 4135.67,
             "commission": -0.67,
@@ -286,6 +412,10 @@
             "profit": 105.62,
             "comment": "Cheragh Money Management",
             "magic": 0,
+            "exit_reason": "manual",
+            "duration_seconds": 1389,
+            "duration": "23m",
+            "strategy": null,
             "net_profit": 104.95
         },
         {
@@ -295,8 +425,8 @@
             "volume": 0.48,
             "open_time": "2026-10-05 17:33:46",
             "open_price": 4128.74,
-            "sl": 0.0,
-            "tp": 0.0,
+            "sl": 4125.84,
+            "tp": 4131.54,
             "close_time": "2026-10-05 17:42:50",
             "close_price": 4131.35,
             "commission": -1.01,
@@ -304,6 +434,10 @@
             "profit": 62.64,
             "comment": "Cheragh Money Management",
             "magic": 0,
+            "exit_reason": "manual",
+            "duration_seconds": 544,
+            "duration": "9m",
+            "strategy": null,
             "net_profit": 61.63
         },
         {
@@ -313,8 +447,8 @@
             "volume": 0.48,
             "open_time": "2026-10-05 17:33:46",
             "open_price": 4128.74,
-            "sl": 0.0,
-            "tp": 0.0,
+            "sl": 4125.84,
+            "tp": 4134.33,
             "close_time": "2026-10-05 17:53:03",
             "close_price": 4135.05,
             "commission": -1.01,
@@ -322,6 +456,10 @@
             "profit": 152.76,
             "comment": "Cheragh Money Management",
             "magic": 0,
+            "exit_reason": "manual",
+            "duration_seconds": 1157,
+            "duration": "19m",
+            "strategy": null,
             "net_profit": 151.75
         },
         {
@@ -340,6 +478,10 @@
             "profit": -4.42,
             "comment": "VorAdvs by Shayan Ghadamian",
             "magic": 123456,
+            "exit_reason": "manual",
+            "duration_seconds": 430,
+            "duration": "7m",
+            "strategy": null,
             "net_profit": -4.5
         },
         {
@@ -358,6 +500,10 @@
             "profit": -4.44,
             "comment": "VorAdvs by Shayan Ghadamian",
             "magic": 123456,
+            "exit_reason": "manual",
+            "duration_seconds": 430,
+            "duration": "7m",
+            "strategy": null,
             "net_profit": -4.52
         },
         {
@@ -376,6 +522,10 @@
             "profit": -0.58,
             "comment": "VorAdvs",
             "magic": 20241008,
+            "exit_reason": "manual",
+            "duration_seconds": 8,
+            "duration": "8s",
+            "strategy": null,
             "net_profit": -0.66
         },
         {
@@ -394,6 +544,10 @@
             "profit": 0.6,
             "comment": "VorAdvs close",
             "magic": 20241008,
+            "exit_reason": "manual",
+            "duration_seconds": 477,
+            "duration": "7m",
+            "strategy": null,
             "net_profit": 0.52
         },
         {
@@ -412,6 +566,10 @@
             "profit": -2.22,
             "comment": "VorAdvs close",
             "magic": 20241008,
+            "exit_reason": "manual",
+            "duration_seconds": 457,
+            "duration": "7m",
+            "strategy": null,
             "net_profit": -2.3
         },
         {
@@ -421,8 +579,8 @@
             "volume": 0.24,
             "open_time": "2026-10-05 20:02:00",
             "open_price": 4139.16,
-            "sl": 0.0,
-            "tp": 0.0,
+            "sl": 4125.0,
+            "tp": 4210.0,
             "close_time": "2026-10-05 20:02:33",
             "close_price": 4138.24,
             "commission": -0.5,
@@ -430,6 +588,10 @@
             "profit": -11.04,
             "comment": "VorAdvs",
             "magic": 20241008,
+            "exit_reason": "manual",
+            "duration_seconds": 33,
+            "duration": "33s",
+            "strategy": null,
             "net_profit": -11.54
         },
         {
@@ -448,6 +610,10 @@
             "profit": -6.48,
             "comment": "VorAdvs close",
             "magic": 20241008,
+            "exit_reason": "manual",
+            "duration_seconds": 1219,
+            "duration": "20m",
+            "strategy": null,
             "net_profit": -6.56
         },
         {
@@ -466,6 +632,10 @@
             "profit": -52.32,
             "comment": "VorAdvs close",
             "magic": 20241008,
+            "exit_reason": "manual",
+            "duration_seconds": 660,
+            "duration": "11m",
+            "strategy": null,
             "net_profit": -52.82
         },
         {
@@ -484,6 +654,10 @@
             "profit": -36.6,
             "comment": "VorAdvs close",
             "magic": 20241008,
+            "exit_reason": "manual",
+            "duration_seconds": 611,
+            "duration": "10m",
+            "strategy": null,
             "net_profit": -37.1
         },
         {
@@ -502,6 +676,10 @@
             "profit": 113.1,
             "comment": "VorAdvs",
             "magic": 20241008,
+            "exit_reason": "manual",
+            "duration_seconds": 36753,
+            "duration": "10h 12m",
+            "strategy": null,
             "net_profit": 112.89
         },
         {
@@ -520,6 +698,10 @@
             "profit": 113.25,
             "comment": "VorAdvs",
             "magic": 20241008,
+            "exit_reason": "manual",
+            "duration_seconds": 36743,
+            "duration": "10h 12m",
+            "strategy": null,
             "net_profit": 113.04
         },
         {
@@ -538,6 +720,10 @@
             "profit": 112.45,
             "comment": "VorAdvs",
             "magic": 20241008,
+            "exit_reason": "manual",
+            "duration_seconds": 36742,
+            "duration": "10h 12m",
+            "strategy": null,
             "net_profit": 112.24
         },
         {
@@ -556,6 +742,10 @@
             "profit": 191.6,
             "comment": "VorAdvs",
             "magic": 20241008,
+            "exit_reason": "manual",
+            "duration_seconds": 36673,
+            "duration": "10h 11m",
+            "strategy": null,
             "net_profit": 191.26
         },
         {
@@ -574,6 +764,10 @@
             "profit": 191.6,
             "comment": "VorAdvs",
             "magic": 20241008,
+            "exit_reason": "manual",
+            "duration_seconds": 36673,
+            "duration": "10h 11m",
+            "strategy": null,
             "net_profit": 191.26
         },
         {
@@ -592,6 +786,10 @@
             "profit": 191.2,
             "comment": "VorAdvs",
             "magic": 20241008,
+            "exit_reason": "manual",
+            "duration_seconds": 36672,
+            "duration": "10h 11m",
+            "strategy": null,
             "net_profit": 190.86
         }
     ],

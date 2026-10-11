@@ -13,22 +13,47 @@ TRADES_DB = "trades.json"
 
 
 # ------------------------------------------------------------------
-# Helpers
+# Utilities
 # ------------------------------------------------------------------
 def ts_to_str(ts):
-    """Convert a UNIX timestamp (int/float) to a readable string."""
     if ts in (None, 0):
         return None
     return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
+def format_duration(seconds):
+    if not seconds or seconds < 0:
+        return None
+    seconds = int(seconds)
+    d, rem = divmod(seconds, 86400)
+    h, rem = divmod(rem, 3600)
+    m, s = divmod(rem, 60)
+    parts = []
+    if d: parts.append(f"{d}d")
+    if h: parts.append(f"{h}h")
+    if m: parts.append(f"{m}m")
+    if not parts: parts.append(f"{s}s")
+    return " ".join(parts)
+
+
 def deal_type_name(t):
-    """MT5 deal type → readable string."""
     return {0: "buy", 1: "sell"}.get(t, str(t))
 
 
+def detect_exit_reason(close_price, sl, tp, symbol_digits=5):
+    """Guess how the trade closed based on close price vs SL/TP."""
+    if close_price is None:
+        return "unknown"
+    tol = 10 ** (-symbol_digits + 1)
+    if tp and abs(close_price - tp) < tol:
+        return "tp"
+    if sl and abs(close_price - sl) < tol:
+        return "sl"
+    return "manual"
+
+
 # ------------------------------------------------------------------
-# Strategy database
+# Strategy DB
 # ------------------------------------------------------------------
 def load_existing_strategies(filepath):
     if not os.path.exists(filepath):
@@ -44,7 +69,6 @@ def collect_strategies(start_index=1):
     strategies = []
     print("\nEnter your strategies one by one.")
     print("Press ENTER on an empty line to save and exit.\n")
-
     while True:
         try:
             entry = input(f"Strategy #{start_index + len(strategies)}: ").strip()
@@ -54,7 +78,6 @@ def collect_strategies(start_index=1):
         if entry == "":
             break
         strategies.append(entry)
-
     return strategies
 
 
@@ -62,15 +85,13 @@ def save_strategies(filepath, new_strategies):
     existing = load_existing_strategies(filepath)
     seen = {s.lower() for s in existing}
     added, skipped = [], []
-
-    for strategy in new_strategies:
-        if strategy.lower() in seen:
-            skipped.append(strategy)
+    for s in new_strategies:
+        if s.lower() in seen:
+            skipped.append(s)
         else:
-            existing.append(strategy)
-            seen.add(strategy.lower())
-            added.append(strategy)
-
+            existing.append(s)
+            seen.add(s.lower())
+            added.append(s)
     payload = {
         "last_updated": datetime.now(timezone.utc).isoformat(),
         "count": len(existing),
@@ -78,60 +99,76 @@ def save_strategies(filepath, new_strategies):
     }
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=4, ensure_ascii=False)
-
     return existing, added, skipped
 
 
 def strategy_step():
     existing = load_existing_strategies(STRATEGY_DB)
-
     if existing:
         print(f"\nFound existing strategy database with {len(existing)} entries.")
         answer = input("Do you want to modify the strategy database? (y/n): ").strip().lower()
         if answer not in ("y", "yes"):
             print("Skipping strategy update.")
             return
-
     strategies = collect_strategies(start_index=len(existing) + 1)
     if not strategies:
         print("\nNo strategies entered. Nothing to save.")
         return
-
     all_strategies, added, skipped = save_strategies(STRATEGY_DB, strategies)
-
     if added:
         print(f"\nSaved {len(added)} new strategy(ies) to '{STRATEGY_DB}'.")
-        for s in added:
-            print(f"  + {s}")
+        for s in added: print(f"  + {s}")
     if skipped:
         print(f"\nSkipped {len(skipped)} duplicate(s):")
-        for s in skipped:
-            print(f"  - {s}")
-
+        for s in skipped: print(f"  - {s}")
     print(f"\nTotal strategies in database: {len(all_strategies)}")
 
 
 # ------------------------------------------------------------------
-# MT5 trade export (History-tab style)
+# MT5 helpers
 # ------------------------------------------------------------------
-def build_trade_history(deals):
-    """
-    Group deals by position_id and return one clean record per trade,
-    shaped like a MetaTrader5 History row.
-    """
+def build_orders_map(orders):
+    """position_id -> {'sl': ..., 'tp': ...} from opening orders."""
+    out = {}
+    for o in orders:
+        pid = o.position_id
+        if pid == 0:
+            continue
+        # Keep the entry order's SL/TP (DEAL_ENTRY_IN equivalent)
+        if o.sl or o.tp:
+            entry = out.setdefault(pid, {"sl": 0.0, "tp": 0.0})
+            # Take the last non-zero value seen (usually the initial SL/TP)
+            if o.sl: entry["sl"] = o.sl
+            if o.tp: entry["tp"] = o.tp
+    return out
+
+
+def match_strategy(comment, strategy_list):
+    """Return the strategy name that best matches this trade's comment."""
+    if not comment:
+        return None
+    c = comment.lower().strip()
+    for s in strategy_list:
+        if s.lower().strip() in c:
+            return s
+    return None
+
+
+def build_trade_history(deals, orders, strategy_list):
+    """Group deals → per-trade rows enriched with SL/TP, exit reason, strategy."""
+    orders_map = build_orders_map(orders)
     trades = {}
 
     for d in deals:
         pid = d.position_id
         if pid == 0:
-            # Balance / credit operations — skip
             continue
 
         if pid not in trades:
             trades[pid] = {
                 "position_id": pid,
                 "symbol": d.symbol,
-                "type": None,            # buy / sell (from entry deal)
+                "type": None,
                 "volume": 0.0,
                 "open_time": None,
                 "open_price": None,
@@ -152,37 +189,56 @@ def build_trade_history(deals):
         t["swap"] += d.swap
         t["profit"] += d.profit
 
-        # Entry deal (DEAL_ENTRY_IN == 0)
-        if d.entry == 0:
+        if d.entry == 0:                 # entry deal
             t["type"] = deal_type_name(d.type)
             t["open_time"] = d.time
             t["open_price"] = d.price
-
-        # Exit deal (DEAL_ENTRY_OUT == 1 or OUT_BY == 3)
-        elif d.entry in (1, 3):
+        elif d.entry in (1, 3):          # exit deal
             t["close_time"] = d.time
             t["close_price"] = d.price
 
         if d.comment:
             t["comment"] = d.comment
 
-    # Order records + format timestamps
-    ordered = sorted(trades.values(), key=lambda x: x["open_time"] or 0)
+    # Enrich each trade
+    out = []
+    for pid, t in trades.items():
+        # Attach SL/TP from orders (if available)
+        o = orders_map.get(pid, {})
+        t["sl"] = round(o.get("sl", 0.0), 5)
+        t["tp"] = round(o.get("tp", 0.0), 5)
 
-    for t in ordered:
+        # Exit reason
+        t["exit_reason"] = detect_exit_reason(t["close_price"], t["sl"], t["tp"])
+
+        # Duration
+        duration_sec = None
+        if t["open_time"] and t["close_time"]:
+            duration_sec = t["close_time"] - t["open_time"]
+        t["duration_seconds"] = duration_sec
+        t["duration"] = format_duration(duration_sec)
+
+        # Strategy tag
+        t["strategy"] = match_strategy(t["comment"], strategy_list)
+
+        # Round numbers
         t["volume"] = round(t["volume"], 2)
         t["commission"] = round(t["commission"], 2)
         t["swap"] = round(t["swap"], 2)
         t["profit"] = round(t["profit"], 2)
         t["net_profit"] = round(t["profit"] + t["commission"] + t["swap"], 2)
+
+        # Format times
         t["open_time"] = ts_to_str(t["open_time"])
         t["close_time"] = ts_to_str(t["close_time"])
 
-    return ordered
+        out.append(t)
+
+    out.sort(key=lambda x: x["open_time"] or "")
+    return out
 
 
 def build_open_positions(positions):
-    """Shape open positions like the MT5 Trade tab."""
     out = []
     for p in positions:
         out.append({
@@ -202,10 +258,53 @@ def build_open_positions(positions):
     return out
 
 
+# ------------------------------------------------------------------
+# Stats
+# ------------------------------------------------------------------
+def compute_stats(trades):
+    """Overall + per-symbol + per-strategy stats."""
+    def _stats(rows):
+        if not rows:
+            return {"trades": 0, "wins": 0, "losses": 0, "win_rate": 0,
+                    "gross_profit": 0, "gross_loss": 0, "net_profit": 0,
+                    "avg_win": 0, "avg_loss": 0}
+        wins = [t for t in rows if t["net_profit"] > 0]
+        losses = [t for t in rows if t["net_profit"] < 0]
+        gp = round(sum(t["net_profit"] for t in wins), 2)
+        gl = round(sum(t["net_profit"] for t in losses), 2)
+        net = round(gp + gl, 2)
+        return {
+            "trades": len(rows),
+            "wins": len(wins),
+            "losses": len(losses),
+            "win_rate": round(len(wins) / len(rows) * 100, 2),
+            "gross_profit": gp,
+            "gross_loss": gl,
+            "net_profit": net,
+            "avg_win": round(gp / len(wins), 2) if wins else 0,
+            "avg_loss": round(gl / len(losses), 2) if losses else 0,
+        }
+
+    by_symbol, by_strategy = {}, {}
+    for t in trades:
+        by_symbol.setdefault(t["symbol"], []).append(t)
+        key = t["strategy"] or "untagged"
+        by_strategy.setdefault(key, []).append(t)
+
+    return {
+        "overall": _stats(trades),
+        "by_symbol": {k: _stats(v) for k, v in by_symbol.items()},
+        "by_strategy": {k: _stats(v) for k, v in by_strategy.items()},
+    }
+
+
+# ------------------------------------------------------------------
+# Main export
+# ------------------------------------------------------------------
 def export_mt5_trades(filepath=TRADES_DB):
     if not MT5_AVAILABLE:
         print("\n[!] MetaTrader5 package not installed.")
-        print("    Install it with:  pip install MetaTrader5")
+        print("    Install with:  pip install MetaTrader5")
         return
 
     print("\nConnecting to MetaTrader5...")
@@ -223,17 +322,15 @@ def export_mt5_trades(filepath=TRADES_DB):
         from_date = datetime(2000, 1, 1)
         to_date = datetime.now(timezone.utc)
 
-        raw_deals = mt5.history_deals_get(from_date, to_date) or []
+        deals = mt5.history_deals_get(from_date, to_date) or []
+        orders = mt5.history_orders_get(from_date, to_date) or []
         positions = mt5.positions_get() or []
 
-        trade_history = build_trade_history(raw_deals)
-        open_positions = build_open_positions(positions)
+        strategy_list = load_existing_strategies(STRATEGY_DB)
 
-        # Summary stats (like MT5's History bottom bar)
-        total_profit = round(sum(t["profit"] for t in trade_history), 2)
-        total_commission = round(sum(t["commission"] for t in trade_history), 2)
-        total_swap = round(sum(t["swap"] for t in trade_history), 2)
-        net = round(total_profit + total_commission + total_swap, 2)
+        history = build_trade_history(deals, orders, strategy_list)
+        open_positions = build_open_positions(positions)
+        stats = compute_stats(history)
 
         payload = {
             "exported_at": datetime.now(timezone.utc).isoformat(),
@@ -247,31 +344,28 @@ def export_mt5_trades(filepath=TRADES_DB):
                 "leverage": account.leverage,
             },
             "summary": {
-                "total_trades": len(trade_history),
+                "total_trades": len(history),
                 "open_positions": len(open_positions),
-                "total_profit": total_profit,
-                "total_commission": total_commission,
-                "total_swap": total_swap,
-                "net_result": net,
+                "net_result": stats["overall"]["net_profit"],
+                "win_rate": stats["overall"]["win_rate"],
             },
-            "history": trade_history,
+            "stats": stats,
+            "history": history,
             "open_positions": open_positions,
         }
 
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=4, ensure_ascii=False, default=str)
 
-        print(f"\nExported {len(trade_history)} trade(s) from history.")
-        print(f"Open positions: {len(open_positions)}")
-        print(f"Net result: {net} {account.currency}")
-        print(f"Saved to '{filepath}'.")
+        o = stats["overall"]
+        print(f"\nExported {len(history)} trade(s) → '{filepath}'")
+        print(f"  Open positions : {len(open_positions)}")
+        print(f"  Net result     : {o['net_profit']} {account.currency}")
+        print(f"  Win rate       : {o['win_rate']}%  ({o['wins']}W / {o['losses']}L)")
     finally:
         mt5.shutdown()
 
 
-# ------------------------------------------------------------------
-# Main
-# ------------------------------------------------------------------
 def main():
     strategy_step()
     export_mt5_trades()
