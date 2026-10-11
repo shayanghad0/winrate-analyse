@@ -39,20 +39,32 @@ def collect_strategies():
 
 
 def save_strategies(filepath, new_strategies):
-    """Save strategies to the JSON database, appending to existing ones."""
+    """Save strategies to the JSON database, skipping duplicates."""
     existing = load_existing_strategies(filepath)
-    combined = existing + new_strategies
+
+    # Build a case-insensitive lookup of existing strategies
+    seen = {s.lower() for s in existing}
+
+    added = []
+    skipped = []
+    for strategy in new_strategies:
+        if strategy.lower() in seen:
+            skipped.append(strategy)
+        else:
+            existing.append(strategy)
+            seen.add(strategy.lower())
+            added.append(strategy)
 
     payload = {
         "last_updated": datetime.now(timezone.utc).isoformat(),
-        "count": len(combined),
-        "strategies": combined,
+        "count": len(existing),
+        "strategies": existing,
     }
 
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=4, ensure_ascii=False)
 
-    return combined
+    return existing, added, skipped
 
 
 def main():
@@ -62,10 +74,19 @@ def main():
         print("\nNo strategies entered. Nothing to save.")
         return
 
-    all_strategies = save_strategies(DATABASE_FILE, strategies)
+    all_strategies, added, skipped = save_strategies(DATABASE_FILE, strategies)
 
-    print(f"\nSaved {len(strategies)} new strategy(ies) to '{DATABASE_FILE}'.")
-    print(f"Total strategies in database: {len(all_strategies)}")
+    if added:
+        print(f"\nSaved {len(added)} new strategy(ies) to '{DATABASE_FILE}'.")
+        for s in added:
+            print(f"  + {s}")
+
+    if skipped:
+        print(f"\nSkipped {len(skipped)} duplicate(s):")
+        for s in skipped:
+            print(f"  - {s}")
+
+    print(f"\nTotal strategies in database: {len(all_strategies)}")
 
 
 if __name__ == "__main__":
