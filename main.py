@@ -10,6 +10,7 @@ except ImportError:
 
 STRATEGY_DB = "strategies.json"
 TRADES_DB = "trades.json"
+ALL_LABEL = "All"          # reserved tag — never saved to strategies.json
 
 
 # ------------------------------------------------------------------
@@ -81,16 +82,22 @@ def collect_strategies(start_index=1):
 
 
 def save_strategies(filepath, new_strategies):
+    """Save new strategies to DB, skipping duplicates and the reserved 'All' tag."""
     existing = load_existing_strategies(filepath)
     seen = {s.lower() for s in existing}
     added, skipped = [], []
+
     for s in new_strategies:
+        # Never save "All" — it's a reserved tag, not a real strategy
+        if s.lower() == ALL_LABEL.lower():
+            continue
         if s.lower() in seen:
             skipped.append(s)
         else:
             existing.append(s)
             seen.add(s.lower())
             added.append(s)
+
     payload = {
         "last_updated": datetime.now(timezone.utc).isoformat(),
         "count": len(existing),
@@ -242,12 +249,15 @@ def build_open_positions(positions):
 
 
 # ------------------------------------------------------------------
-# Interactive strategy tagging (NEW)
+# Interactive strategy tagging (with "All" option, no skip)
 # ------------------------------------------------------------------
 def ask_strategy_for_trades(trades, strategy_list):
     """
-    Ask the user, trade by trade, which strategy was used.
-    Returns the (possibly updated) strategy_list.
+    Ask user, trade by trade, which strategy was used.
+    - Numbered list shows all strategies + a final '[X+1] All' option.
+    - ENTER is NOT allowed (must pick something).
+    - Type a name to assign a custom strategy (auto-saved to DB).
+    - 'q' quits tagging early.
     """
     if not trades:
         return strategy_list
@@ -255,8 +265,10 @@ def ask_strategy_for_trades(trades, strategy_list):
     print(f"\n{'=' * 62}")
     print(f"  Strategy tagging — {len(trades)} trade(s) to review")
     print(f"{'=' * 62}")
-    print("For each trade: type a number from the list, type a strategy name,")
-    print("press ENTER to keep current / skip, or 'q' to stop tagging.\n")
+    print("For each trade: type the number of the strategy used,")
+    print("or type a new strategy name, or 'q' to stop early.")
+    print(f"The last option is always '{ALL_LABEL}' — pick it if you used")
+    print("multiple strategies on that trade.\n")
 
     new_strategies_to_add = []
 
@@ -272,51 +284,55 @@ def ask_strategy_for_trades(trades, strategy_list):
         if t.get("comment"):
             print(f"  Comment    : {t['comment']}")
 
-        if strategy_list:
-            print("\n  Available strategies:")
-            for idx, s in enumerate(strategy_list, 1):
-                marker = " <-- current" if s == t.get("strategy") else ""
-                print(f"    [{idx}] {s}{marker}")
+        # Build option list: existing strategies + "All"
+        options = list(strategy_list) + [ALL_LABEL]
 
-        current = t.get("strategy")
-        prompt = "\n  Strategy (number / name / ENTER to skip / q to quit): "
-        try:
-            answer = input(prompt).strip()
-        except (EOFError, KeyboardInterrupt):
-            print("\n  Interrupted. Stopping strategy tagging.")
-            break
+        print("\n  Available options:")
+        for idx, s in enumerate(options, 1):
+            marker = " <-- current" if s == t.get("strategy") else ""
+            print(f"    [{idx}] {s}{marker}")
 
-        if answer.lower() == "q":
-            print("  Stopping strategy tagging early.")
-            break
+        # Loop until we get a valid answer (no empty/skip allowed)
+        while True:
+            try:
+                answer = input("\n  Pick (number / new name / q to quit): ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print("\n  Interrupted. Stopping strategy tagging.")
+                return strategy_list
 
-        if answer == "":
-            # keep whatever auto-match gave (could be None)
-            if current:
-                print(f"  → Kept: {current}")
-            else:
-                print("  → Skipped (no strategy).")
-            continue
+            if answer.lower() == "q":
+                print("  Stopping strategy tagging early.")
+                return strategy_list
 
-        # Number pick
-        if answer.isdigit() and strategy_list:
-            idx = int(answer) - 1
-            if 0 <= idx < len(strategy_list):
-                t["strategy"] = strategy_list[idx]
-                print(f"  → Assigned: {t['strategy']}")
-                continue
-            else:
-                print(f"  [!] Invalid number. Skipping this trade.")
+            if answer == "":
+                print("  [!] Empty input not allowed — pick a number or type a name.")
                 continue
 
-        # Free-text strategy name
-        t["strategy"] = answer
-        print(f"  → Assigned: {answer}")
+            # Number pick
+            if answer.isdigit():
+                idx = int(answer) - 1
+                if 0 <= idx < len(options):
+                    chosen = options[idx]
+                    t["strategy"] = chosen
+                    print(f"  → Assigned: {chosen}")
+                    # Don't save "All" to DB
+                    if chosen.lower() != ALL_LABEL.lower():
+                        if chosen.lower() not in {s.lower() for s in strategy_list}:
+                            new_strategies_to_add.append(chosen)
+                            strategy_list.append(chosen)
+                    break
+                else:
+                    print(f"  [!] Number out of range (1-{len(options)}). Try again.")
+                    continue
 
-        # If it's new, remember to add it to the DB
-        if answer.lower() not in {s.lower() for s in strategy_list}:
-            new_strategies_to_add.append(answer)
-            strategy_list.append(answer)
+            # Free-text custom strategy name
+            t["strategy"] = answer
+            print(f"  → Assigned: {answer}")
+            if answer.lower() not in {s.lower() for s in strategy_list} \
+               and answer.lower() != ALL_LABEL.lower():
+                new_strategies_to_add.append(answer)
+                strategy_list.append(answer)
+            break
 
     # Persist any new strategies the user invented during tagging
     if new_strategies_to_add:
@@ -404,11 +420,9 @@ def export_mt5_trades(filepath=TRADES_DB, ask_strategies=True):
 
         print(f"Found {len(history)} closed trade(s) and {len(open_positions)} open position(s).")
 
-        # ---- NEW: interactive per-trade strategy tagging ----
         if ask_strategies and history:
             ask_strategy_for_trades(history, strategy_list)
 
-        # Stats are computed AFTER tagging so by_strategy is accurate
         stats = compute_stats(history)
 
         payload = {
