@@ -41,7 +41,6 @@ def deal_type_name(t):
 
 
 def detect_exit_reason(close_price, sl, tp, symbol_digits=5):
-    """Guess how the trade closed based on close price vs SL/TP."""
     if close_price is None:
         return "unknown"
     tol = 10 ** (-symbol_digits + 1)
@@ -128,23 +127,19 @@ def strategy_step():
 # MT5 helpers
 # ------------------------------------------------------------------
 def build_orders_map(orders):
-    """position_id -> {'sl': ..., 'tp': ...} from opening orders."""
     out = {}
     for o in orders:
         pid = o.position_id
         if pid == 0:
             continue
-        # Keep the entry order's SL/TP (DEAL_ENTRY_IN equivalent)
         if o.sl or o.tp:
             entry = out.setdefault(pid, {"sl": 0.0, "tp": 0.0})
-            # Take the last non-zero value seen (usually the initial SL/TP)
             if o.sl: entry["sl"] = o.sl
             if o.tp: entry["tp"] = o.tp
     return out
 
 
 def match_strategy(comment, strategy_list):
-    """Return the strategy name that best matches this trade's comment."""
     if not comment:
         return None
     c = comment.lower().strip()
@@ -155,7 +150,6 @@ def match_strategy(comment, strategy_list):
 
 
 def build_trade_history(deals, orders, strategy_list):
-    """Group deals → per-trade rows enriched with SL/TP, exit reason, strategy."""
     orders_map = build_orders_map(orders)
     trades = {}
 
@@ -163,7 +157,6 @@ def build_trade_history(deals, orders, strategy_list):
         pid = d.position_id
         if pid == 0:
             continue
-
         if pid not in trades:
             trades[pid] = {
                 "position_id": pid,
@@ -182,53 +175,43 @@ def build_trade_history(deals, orders, strategy_list):
                 "comment": "",
                 "magic": d.magic,
             }
-
         t = trades[pid]
         t["volume"] += d.volume
         t["commission"] += d.commission
         t["swap"] += d.swap
         t["profit"] += d.profit
 
-        if d.entry == 0:                 # entry deal
+        if d.entry == 0:
             t["type"] = deal_type_name(d.type)
             t["open_time"] = d.time
             t["open_price"] = d.price
-        elif d.entry in (1, 3):          # exit deal
+        elif d.entry in (1, 3):
             t["close_time"] = d.time
             t["close_price"] = d.price
 
         if d.comment:
             t["comment"] = d.comment
 
-    # Enrich each trade
     out = []
     for pid, t in trades.items():
-        # Attach SL/TP from orders (if available)
         o = orders_map.get(pid, {})
         t["sl"] = round(o.get("sl", 0.0), 5)
         t["tp"] = round(o.get("tp", 0.0), 5)
-
-        # Exit reason
         t["exit_reason"] = detect_exit_reason(t["close_price"], t["sl"], t["tp"])
 
-        # Duration
         duration_sec = None
         if t["open_time"] and t["close_time"]:
             duration_sec = t["close_time"] - t["open_time"]
         t["duration_seconds"] = duration_sec
         t["duration"] = format_duration(duration_sec)
 
-        # Strategy tag
         t["strategy"] = match_strategy(t["comment"], strategy_list)
 
-        # Round numbers
         t["volume"] = round(t["volume"], 2)
         t["commission"] = round(t["commission"], 2)
         t["swap"] = round(t["swap"], 2)
         t["profit"] = round(t["profit"], 2)
         t["net_profit"] = round(t["profit"] + t["commission"] + t["swap"], 2)
-
-        # Format times
         t["open_time"] = ts_to_str(t["open_time"])
         t["close_time"] = ts_to_str(t["close_time"])
 
@@ -259,10 +242,97 @@ def build_open_positions(positions):
 
 
 # ------------------------------------------------------------------
+# Interactive strategy tagging (NEW)
+# ------------------------------------------------------------------
+def ask_strategy_for_trades(trades, strategy_list):
+    """
+    Ask the user, trade by trade, which strategy was used.
+    Returns the (possibly updated) strategy_list.
+    """
+    if not trades:
+        return strategy_list
+
+    print(f"\n{'=' * 62}")
+    print(f"  Strategy tagging — {len(trades)} trade(s) to review")
+    print(f"{'=' * 62}")
+    print("For each trade: type a number from the list, type a strategy name,")
+    print("press ENTER to keep current / skip, or 'q' to stop tagging.\n")
+
+    new_strategies_to_add = []
+
+    for i, t in enumerate(trades, 1):
+        print(f"\n--- Trade {i}/{len(trades)} ----------------------------------")
+        print(f"  Symbol     : {t['symbol']}")
+        print(f"  Type       : {t['type']}")
+        print(f"  Volume     : {t['volume']}")
+        print(f"  Open       : {t['open_time']} @ {t['open_price']}")
+        print(f"  Close      : {t['close_time']} @ {t['close_price']}")
+        print(f"  Duration   : {t['duration']}")
+        print(f"  Net P/L    : {t['net_profit']}")
+        if t.get("comment"):
+            print(f"  Comment    : {t['comment']}")
+
+        if strategy_list:
+            print("\n  Available strategies:")
+            for idx, s in enumerate(strategy_list, 1):
+                marker = " <-- current" if s == t.get("strategy") else ""
+                print(f"    [{idx}] {s}{marker}")
+
+        current = t.get("strategy")
+        prompt = "\n  Strategy (number / name / ENTER to skip / q to quit): "
+        try:
+            answer = input(prompt).strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\n  Interrupted. Stopping strategy tagging.")
+            break
+
+        if answer.lower() == "q":
+            print("  Stopping strategy tagging early.")
+            break
+
+        if answer == "":
+            # keep whatever auto-match gave (could be None)
+            if current:
+                print(f"  → Kept: {current}")
+            else:
+                print("  → Skipped (no strategy).")
+            continue
+
+        # Number pick
+        if answer.isdigit() and strategy_list:
+            idx = int(answer) - 1
+            if 0 <= idx < len(strategy_list):
+                t["strategy"] = strategy_list[idx]
+                print(f"  → Assigned: {t['strategy']}")
+                continue
+            else:
+                print(f"  [!] Invalid number. Skipping this trade.")
+                continue
+
+        # Free-text strategy name
+        t["strategy"] = answer
+        print(f"  → Assigned: {answer}")
+
+        # If it's new, remember to add it to the DB
+        if answer.lower() not in {s.lower() for s in strategy_list}:
+            new_strategies_to_add.append(answer)
+            strategy_list.append(answer)
+
+    # Persist any new strategies the user invented during tagging
+    if new_strategies_to_add:
+        _, added, _ = save_strategies(STRATEGY_DB, new_strategies_to_add)
+        if added:
+            print(f"\nAdded {len(added)} new strategy(ies) to '{STRATEGY_DB}':")
+            for s in added:
+                print(f"  + {s}")
+
+    return strategy_list
+
+
+# ------------------------------------------------------------------
 # Stats
 # ------------------------------------------------------------------
 def compute_stats(trades):
-    """Overall + per-symbol + per-strategy stats."""
     def _stats(rows):
         if not rows:
             return {"trades": 0, "wins": 0, "losses": 0, "win_rate": 0,
@@ -301,7 +371,7 @@ def compute_stats(trades):
 # ------------------------------------------------------------------
 # Main export
 # ------------------------------------------------------------------
-def export_mt5_trades(filepath=TRADES_DB):
+def export_mt5_trades(filepath=TRADES_DB, ask_strategies=True):
     if not MT5_AVAILABLE:
         print("\n[!] MetaTrader5 package not installed.")
         print("    Install with:  pip install MetaTrader5")
@@ -328,8 +398,17 @@ def export_mt5_trades(filepath=TRADES_DB):
 
         strategy_list = load_existing_strategies(STRATEGY_DB)
 
+        print(f"Grouping {len(deals)} deal(s) into trades...")
         history = build_trade_history(deals, orders, strategy_list)
         open_positions = build_open_positions(positions)
+
+        print(f"Found {len(history)} closed trade(s) and {len(open_positions)} open position(s).")
+
+        # ---- NEW: interactive per-trade strategy tagging ----
+        if ask_strategies and history:
+            ask_strategy_for_trades(history, strategy_list)
+
+        # Stats are computed AFTER tagging so by_strategy is accurate
         stats = compute_stats(history)
 
         payload = {
@@ -368,7 +447,7 @@ def export_mt5_trades(filepath=TRADES_DB):
 
 def main():
     strategy_step()
-    export_mt5_trades()
+    export_mt5_trades(ask_strategies=True)
 
 
 if __name__ == "__main__":
