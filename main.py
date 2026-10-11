@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 from datetime import datetime, timezone
 from collections import defaultdict
 
@@ -13,6 +14,19 @@ STRATEGY_DB = "strategies.json"
 TRADES_DB = "trades.json"
 REPORT_HTML = "report.html"
 ALL_LABEL = "All"
+
+
+# Windows consoles default to cp1252, which crashes on characters like '→'.
+def _fix_console_encoding():
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            if hasattr(stream, "reconfigure"):
+                stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, OSError):
+            pass
+
+
+_fix_console_encoding()
 
 
 # ==================================================================
@@ -679,133 +693,477 @@ def ai_analyze(payload):
 # ==================================================================
 # HTML report
 # ==================================================================
-_CSS = """
+_CSS = r"""
+:root{
+  --bg:#0a0e17;--panel:#111a2e;--panel-2:#0d1526;--line:#1f2c47;
+  --text:#e7edf9;--muted:#8797b3;--accent:#5b8cff;--accent2:#8b5cf6;
+  --pos:#2fd47a;--neg:#ff5d73;--warn:#ffc857;
+}
+html[data-theme="light"]{
+  --bg:#f3f6fc;--panel:#ffffff;--panel-2:#f8fafc;--line:#e3e9f3;
+  --text:#0f172a;--muted:#64748b;--accent:#3b6cf6;--accent2:#7c3aed;
+  --pos:#16a34a;--neg:#e11d48;--warn:#d97706;
+}
 *{box-sizing:border-box}
-body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
-background:#0f172a;color:#e2e8f0;line-height:1.5}
-.wrap{max-width:1180px;margin:0 auto;padding:32px 24px 64px}
-header{padding:24px 0 32px;border-bottom:1px solid #1e293b;margin-bottom:32px}
-h1{margin:0 0 6px;font-size:28px;letter-spacing:-0.02em}
-h2{font-size:18px;margin:32px 0 16px;color:#cbd5e1;text-transform:uppercase;
-letter-spacing:0.08em;font-weight:600}
-h3{font-size:15px;margin:0 0 12px;color:#94a3b8;text-transform:uppercase;
-letter-spacing:0.06em;font-weight:600}
-.muted{color:#64748b;font-size:13px;margin:0}
-.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:32px}
-.card{background:#1e293b;border-radius:12px;padding:18px 20px;border:1px solid #334155}
-.card .label{font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:#94a3b8;margin-bottom:6px}
-.card .value{font-size:24px;font-weight:700;letter-spacing:-0.02em}
-.pos{color:#4ade80}.neg{color:#f87171}.neu{color:#e2e8f0}
-.ai-panel{background:linear-gradient(135deg,#1e293b 0%,#1a2334 100%);
-border:1px solid #334155;border-radius:14px;padding:24px;margin-bottom:32px}
-.ai-header{display:flex;align-items:center;gap:20px;margin-bottom:20px}
-.grade{font-size:44px;font-weight:800;letter-spacing:-0.04em}
-.grade.A\\+,.grade.A{color:#4ade80}.grade.B{color:#a3e635}
-.grade.C{color:#facc15}.grade.D,.grade.F{color:#f87171}
-.score-bar{flex:1;height:8px;background:#0f172a;border-radius:4px;overflow:hidden}
-.score-fill{height:100%;background:linear-gradient(90deg,#f87171,#facc15,#4ade80)}
-.score-txt{font-size:13px;color:#94a3b8;margin-top:4px}
-ul.insights,ul.recs{list-style:none;padding:0;margin:0}
-ul.insights li{padding:12px 14px;border-radius:8px;margin-bottom:8px;
-border-left:3px solid #475569;background:#0f172a}
-ul.insights li.good{border-left-color:#4ade80}
-ul.insights li.bad{border-left-color:#f87171}
-ul.insights li.warn{border-left-color:#facc15}
-ul.insights li.info{border-left-color:#60a5fa}
-ul.insights .t{font-weight:600;font-size:14px}
-ul.insights .b{font-size:13px;color:#94a3b8;margin-top:2px}
-ul.recs li{padding:10px 14px;background:#0f172a;border-radius:8px;
-margin-bottom:6px;font-size:13px;color:#cbd5e1}
-ul.recs li::before{content:"→ ";color:#60a5fa;font-weight:700}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:20px}
-.chart-box{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:18px}
-.bar-row{display:grid;grid-template-columns:150px 1fr 80px;gap:10px;
-align-items:center;margin-bottom:6px;font-size:13px}
-.bar-label{color:#cbd5e1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.bar-track{background:#0f172a;height:14px;border-radius:4px;overflow:hidden}
-.bar-fill{height:100%;border-radius:4px}
-.bar-value{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
-table{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}
-th,td{padding:8px 10px;text-align:left;border-bottom:1px solid #1e293b}
-th{background:#1e293b;color:#94a3b8;font-weight:600;text-transform:uppercase;
-letter-spacing:0.05em;font-size:10px;position:sticky;top:0}
-tbody tr:hover{background:#1e293b}
+body{margin:0;background:var(--bg);color:var(--text);
+ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+ line-height:1.5;-webkit-font-smoothing:antialiased}
+.app{display:grid;grid-template-columns:240px minmax(0,1fr);min-height:100vh}
+
+/* ---- sidebar ---- */
+.side{position:sticky;top:0;height:100vh;padding:22px 14px;background:var(--panel-2);
+ border-right:1px solid var(--line);display:flex;flex-direction:column;gap:4px}
+.brand{display:flex;align-items:center;gap:10px;padding:0 8px 16px;
+ border-bottom:1px solid var(--line);margin-bottom:14px}
+.logo{width:34px;height:34px;flex:none;border-radius:10px;display:grid;place-items:center;
+ background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-weight:800;font-size:15px}
+.brand b{font-size:14.5px;letter-spacing:-.01em;display:block}
+.brand small{color:var(--muted);font-size:11px}
+.nav-btn{display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;margin-bottom:2px;
+ border:0;border-left:2px solid transparent;border-radius:8px;background:transparent;
+ color:var(--muted);font-size:14px;cursor:pointer;text-align:left;transition:.15s}
+.nav-btn:hover{background:var(--line);color:var(--text)}
+.nav-btn.active{background:linear-gradient(90deg,rgba(91,140,255,.16),transparent);
+ border-left-color:var(--accent);color:var(--text);font-weight:600}
+.nav-btn i{font-style:normal;opacity:.8;width:16px;text-align:center}
+.side .foot{margin-top:auto;padding:12px 8px 0;border-top:1px solid var(--line);
+ color:var(--muted);font-size:11px}
+
+/* ---- main / topbar ---- */
+.main{padding:26px 32px 70px;max-width:1240px;width:100%;min-width:0}
+.topbar{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start;justify-content:space-between;
+ padding-bottom:20px;border-bottom:1px solid var(--line);margin-bottom:24px}
+h1{margin:0;font-size:24px;letter-spacing:-.02em}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.chip{background:var(--panel);border:1px solid var(--line);border-radius:999px;
+ padding:4px 12px;font-size:12px;color:var(--muted)}
+.chip b{color:var(--text);font-weight:600}
+.icon-btn{background:var(--panel);border:1px solid var(--line);color:var(--text);
+ border-radius:10px;padding:9px 15px;font-size:13px;cursor:pointer;white-space:nowrap;transition:.15s}
+.icon-btn:hover{border-color:var(--accent);color:var(--accent)}
+
+section{display:none;margin-bottom:34px;animation:fade .25s ease}
+section.show{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+h2.sec{font-size:11.5px;text-transform:uppercase;letter-spacing:.11em;color:var(--muted);
+ margin:0 0 14px;font-weight:700}
+
+/* ---- cards ---- */
+.grid-kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(178px,1fr));gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
+.card .label{font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin-bottom:7px}
+.card .value{font-size:23px;font-weight:750;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.card .sub{font-size:11.5px;color:var(--muted);margin-top:5px}
+.pos{color:var(--pos)}.neg{color:var(--neg)}.neu{color:var(--text)}.warn{color:var(--warn)}
+
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px 22px}
+.panel + .panel{margin-top:16px}
+.panel h3{margin:0 0 14px;font-size:13.5px;letter-spacing:.02em}
+.two{display:grid;grid-template-columns:1.4fr 1fr;gap:16px}
+@media(max-width:960px){.two{grid-template-columns:1fr}}
+
+/* ---- donut / kv ---- */
+.donut{--w:0;width:124px;height:124px;flex:none;border-radius:50%;display:grid;place-items:center;
+ background:conic-gradient(var(--pos) calc(var(--w) * 1%),var(--neg) 0)}
+.donut-in{width:88px;height:88px;border-radius:50%;background:var(--panel);display:grid;place-items:center;
+ text-align:center;font-size:17px;font-weight:750;font-variant-numeric:tabular-nums}
+.donut-in small{display:block;font-size:10px;color:var(--muted);font-weight:500;margin-top:2px}
+.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px}
+.kv > div{background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.kv span{display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.kv b{font-size:17px;font-variant-numeric:tabular-nums}
+
+/* ---- AI panel ---- */
+.ai-top{display:flex;gap:24px;align-items:center;flex-wrap:wrap}
+.ring{--v:0;width:128px;height:128px;flex:none;border-radius:50%;display:grid;place-items:center;
+ background:conic-gradient(var(--accent) calc(var(--v) * 1%),var(--line) 0)}
+.ring-in{width:102px;height:102px;border-radius:50%;background:var(--panel);display:grid;place-items:center;
+ text-align:center}
+.grade{font-size:31px;font-weight:800;letter-spacing:-.03em;line-height:1}
+.grade.g-ap,.grade.g-a{color:var(--pos)}
+.grade.g-b{color:#a3e635}
+.grade.g-c{color:var(--warn)}
+.grade.g-d,.grade.g-f{color:var(--neg)}
+html[data-theme="light"] .grade.g-b{color:#65a30d}
+.ring-in small{display:block;font-size:11px;color:var(--muted);margin-top:3px}
+.bar-line{height:10px;border-radius:6px;background:var(--line);overflow:hidden}
+.bar-line i{display:block;height:100%;border-radius:6px;
+ background:linear-gradient(90deg,var(--neg),var(--warn),var(--pos))}
+.ins-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(255px,1fr));gap:10px}
+.ins{background:var(--panel-2);border:1px solid var(--line);border-left:3px solid var(--accent);
+ border-radius:10px;padding:12px 14px}
+.ins.good{border-left-color:var(--pos)}
+.ins.bad{border-left-color:var(--neg)}
+.ins.warn{border-left-color:var(--warn)}
+.ins.info{border-left-color:var(--accent)}
+.ins .t{font-size:13.5px;font-weight:650}
+.ins .b{font-size:12.5px;color:var(--muted);margin-top:3px}
+.recs{list-style:none;padding:0;margin:0;display:grid;gap:8px}
+.recs li{background:var(--panel-2);border:1px solid var(--line);border-radius:10px;
+ padding:11px 14px;font-size:13px}
+.recs li::before{content:"\2192";color:var(--accent);font-weight:700;margin-right:9px}
+
+/* ---- psychology ---- */
+.pgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.pcard{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:14px}
+.pcard .pl{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.pcard .pv{font-size:22px;font-weight:750;margin-top:6px;font-variant-numeric:tabular-nums}
+.pcard .track{height:6px;background:var(--line);border-radius:4px;margin-top:10px;overflow:hidden}
+.pcard .track i{display:block;height:100%;border-radius:4px}
+.pcard .ps{font-size:11px;color:var(--muted);margin-top:7px}
+
+/* ---- bar charts ---- */
+.bars h4{margin:0 0 14px;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em}
+.bar-row{display:grid;grid-template-columns:minmax(80px,155px) 1fr 96px;gap:10px;
+ align-items:center;margin-bottom:8px;font-size:12.5px}
+.bar-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar-track{height:14px;background:var(--line);border-radius:5px;overflow:hidden}
+.bar-fill{height:100%;border-radius:5px}
+.bar-value{text-align:right;font-variant-numeric:tabular-nums;font-weight:650}
+
+/* ---- tables ---- */
+.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px}
+.toolbar input[type=search],.toolbar select{background:var(--panel);border:1px solid var(--line);
+ color:var(--text);border-radius:10px;padding:9px 12px;font-size:13px;outline:none}
+.toolbar input[type=search]{flex:1;min-width:200px}
+.toolbar input[type=search]:focus,.toolbar select:focus{border-color:var(--accent)}
+.summary-line{font-size:12.5px;color:var(--muted);margin:0 0 10px}
+.tbl-wrap{overflow:auto;border:1px solid var(--line);border-radius:14px;
+ background:var(--panel);max-height:620px}
+table{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums}
+th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+th{background:var(--panel-2);color:var(--muted);font-size:10.5px;text-transform:uppercase;
+ letter-spacing:.06em;position:sticky;top:0;z-index:1}
+th.sortable{cursor:pointer;user-select:none}
+th.sortable:hover{color:var(--text)}
+th .arw{opacity:.3;margin-left:4px}
+th.sorted .arw{opacity:1;color:var(--accent)}
+tbody tr:hover{background:var(--panel-2)}
 td.r{text-align:right}
-.tbl-wrap{max-height:600px;overflow:auto;border-radius:10px;border:1px solid #334155;background:#0b1220}
-.tag{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;background:#334155;color:#e2e8f0}
-.tag.p-g{background:#14532d;color:#4ade80}
-.tag.p-y{background:#422006;color:#facc15}
-.tag.p-r{background:#450a0a;color:#f87171}
-.psych-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:16px}
-.psych-card{background:#0f172a;border:1px solid #334155;border-radius:10px;padding:12px}
-.psych-card .pl{font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:#94a3b8}
-.psych-card .pv{font-size:18px;font-weight:700;margin-top:4px}
-.psych-card .ps{font-size:11px;color:#64748b}
-footer{margin-top:48px;padding-top:16px;border-top:1px solid #1e293b;
-font-size:12px;color:#64748b;text-align:center}
+td.comment{max-width:240px;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
+.tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;
+ background:var(--line);color:var(--text)}
+.tag.p-g{background:rgba(47,212,122,.16);color:var(--pos)}
+.tag.p-y{background:rgba(255,200,87,.16);color:var(--warn)}
+.tag.p-r{background:rgba(255,93,115,.16);color:var(--neg)}
+.empty{display:none;padding:30px;text-align:center;color:var(--muted);font-size:13px}
+.chart svg{display:block;width:100%;height:auto}
+footer{margin-top:44px;padding-top:16px;border-top:1px solid var(--line);
+ font-size:12px;color:var(--muted);text-align:center}
+
+/* ---- responsive ---- */
+@media(max-width:860px){
+  .app{grid-template-columns:1fr}
+  .side{position:static;height:auto;flex-direction:row;align-items:center;
+   overflow-x:auto;gap:6px;padding:12px 14px;border-right:0;border-bottom:1px solid var(--line)}
+  .brand{padding:0 12px 0 0;border-bottom:0;border-right:1px solid var(--line);margin:0 6px 0 0}
+  .brand small{display:none}
+  .nav-btn{width:auto;white-space:nowrap;border-left:0;border-bottom:2px solid transparent;margin:0}
+  .nav-btn.active{border-left:0;border-bottom-color:var(--accent)}
+  .side .foot{display:none}
+  .main{padding:20px 16px 60px}
+}
+@media print{
+  .side,.toolbar,#themeBtn{display:none}
+  .app{display:block}
+  .main{padding:0;max-width:none}
+  section{display:block!important;page-break-before:always}
+  section:first-of-type{page-break-before:avoid}
+  .tbl-wrap{max-height:none;overflow:visible}
+}
+"""
+
+_JS = r"""
+(function(){
+  var D = window.__REPORT__ || {trades:[], open:[]};
+  var root = document.documentElement;
+  function $(id){ return document.getElementById(id); }
+
+  /* ---------- theme ---------- */
+  var saved = null;
+  try{ saved = localStorage.getItem('wr-theme'); }catch(e){}
+  if(saved){ root.setAttribute('data-theme', saved); }
+  var tbtn = $('themeBtn');
+  function paintBtn(){
+    tbtn.textContent = root.getAttribute('data-theme') === 'light' ? 'Dark mode' : 'Light mode';
+  }
+  paintBtn();
+  tbtn.addEventListener('click', function(){
+    var next = root.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+    root.setAttribute('data-theme', next);
+    try{ localStorage.setItem('wr-theme', next); }catch(e){}
+    paintBtn();
+  });
+
+  /* ---------- navigation ---------- */
+  var navs = [].slice.call(document.querySelectorAll('.nav-btn'));
+  navs.forEach(function(b){
+    b.addEventListener('click', function(){
+      navs.forEach(function(x){ x.classList.remove('active'); });
+      b.classList.add('active');
+      [].slice.call(document.querySelectorAll('main > section')).forEach(function(s){
+        s.classList.toggle('show', s.id === b.getAttribute('data-target'));
+      });
+      window.scrollTo({top:0, behavior:'smooth'});
+    });
+  });
+
+  /* ---------- helpers ---------- */
+  function esc(s){
+    return String(s === null || s === undefined ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function money(v){ return (v >= 0 ? '+' : '') + Number(v).toFixed(2); }
+  function badge(v){
+    if(v === null || v === undefined) return '<span class="tag">&mdash;</span>';
+    var c = v >= 75 ? 'p-g' : (v >= 50 ? 'p-y' : 'p-r');
+    return '<span class="tag ' + c + '">' + v + '</span>';
+  }
+
+  /* ---------- trade table ---------- */
+  var rows = (D.trades || []).slice();
+  var sortKey = 'open', sortDir = 1;
+  var NUMERIC = {vol:1, net:1, psych:1};
+
+  var stratSel = $('fStrategy');
+  var seen = {};
+  rows.forEach(function(r){ if(!seen[r.strategy]){ seen[r.strategy] = 1;
+    var o = document.createElement('option'); o.value = r.strategy; o.textContent = r.strategy;
+    stratSel.appendChild(o); } });
+
+  function filtered(){
+    var q = ($('q').value || '').toLowerCase().trim();
+    var st = stratSel.value, res = $('fResult').value;
+    return rows.filter(function(r){
+      if(st !== 'all' && r.strategy !== st) return false;
+      if(res === 'win' && !(r.net > 0)) return false;
+      if(res === 'loss' && !(r.net < 0)) return false;
+      if(q){
+        var hay = (r.symbol + ' ' + r.strategy + ' ' + r.exit + ' ' +
+                   r.type + ' ' + r.comment).toLowerCase();
+        if(hay.indexOf(q) < 0) return false;
+      }
+      return true;
+    });
+  }
+
+  function cmp(a, b){
+    var x = a[sortKey], y = b[sortKey];
+    if(x === null || x === undefined) x = NUMERIC[sortKey] ? -Infinity : '';
+    if(y === null || y === undefined) y = NUMERIC[sortKey] ? -Infinity : '';
+    var r = NUMERIC[sortKey] ? (x - y) : String(x).localeCompare(String(y));
+    return r * sortDir;
+  }
+
+  function render(){
+    var list = filtered().sort(cmp);
+    var html = '';
+    list.forEach(function(r){
+      var cls = r.net >= 0 ? 'pos' : 'neg';
+      html += '<tr>' +
+        '<td>' + esc(r.open) + '</td>' +
+        '<td>' + esc(r.close) + '</td>' +
+        '<td><b>' + esc(r.symbol) + '</b></td>' +
+        '<td>' + esc(r.type) + '</td>' +
+        '<td class="r">' + r.vol + '</td>' +
+        '<td>' + esc(r.exit) + '</td>' +
+        '<td>' + esc(r.duration) + '</td>' +
+        '<td><span class="tag">' + esc(r.strategy) + '</span></td>' +
+        '<td class="r">' + badge(r.psych) + '</td>' +
+        '<td class="r ' + cls + '"><b>' + money(r.net) + '</b></td>' +
+        '<td class="comment" title="' + esc(r.comment) + '">' + esc(r.comment) + '</td>' +
+        '</tr>';
+    });
+    $('tbody').innerHTML = html;
+    $('emptyMsg').style.display = list.length ? 'none' : 'block';
+    var net = list.reduce(function(a, r){ return a + r.net; }, 0);
+    var wins = list.filter(function(r){ return r.net > 0; }).length;
+    $('tblSummary').textContent = 'Showing ' + list.length + ' of ' + rows.length +
+      ' trades · ' + wins + 'W / ' + (list.length - wins) + 'L · net ' + money(net);
+  }
+
+  ['q', 'fStrategy', 'fResult'].forEach(function(id){
+    $(id).addEventListener('input', render);
+    $(id).addEventListener('change', render);
+  });
+
+  [].slice.call(document.querySelectorAll('th.sortable')).forEach(function(th){
+    th.addEventListener('click', function(){
+      var k = th.getAttribute('data-key');
+      if(sortKey === k){ sortDir = -sortDir; }
+      else { sortKey = k; sortDir = (k === 'open' || k === 'close') ? 1 : -1; }
+      [].slice.call(document.querySelectorAll('th.sortable')).forEach(function(x){
+        x.classList.remove('sorted');
+        x.querySelector('.arw').textContent = '\u2195';
+      });
+      th.classList.add('sorted');
+      th.querySelector('.arw').textContent = sortDir > 0 ? '\u25b2' : '\u25bc';
+      render();
+    });
+  });
+
+  /* ---------- CSV export ---------- */
+  $('csvBtn').addEventListener('click', function(){
+    var cols = ['open','close','symbol','type','vol','exit','duration',
+                'strategy','psych','net','comment'];
+    var out = [cols.join(',')];
+    filtered().sort(cmp).forEach(function(r){
+      out.push(cols.map(function(c){
+        var v = r[c] === null || r[c] === undefined ? '' : String(r[c]);
+        return /[",\n]/.test(v) ? '"' + v.replace(/"/g,'""') + '"' : v;
+      }).join(','));
+    });
+    var blob = new Blob([out.join('\n')], {type:'text/csv;charset=utf-8'});
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'trades.csv';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
+  });
+
+  render();
+})();
 """
 
 
-def _svg_equity_curve(history, width=760, height=220, pad=36):
-    if not history: return "<p class='muted'>No closed trades.</p>"
+def _svg_equity_curve(history, width=880, height=260, pad=42):
+    if not history:
+        return "<p class='muted'>No closed trades.</p>"
     sorted_t = sorted(history, key=lambda x: x["close_time"] or "")
     points, cum = [], 0.0
     for t in sorted_t:
-        cum += t["net_profit"]; points.append(cum)
-    if not points: return ""
+        cum += t["net_profit"]
+        points.append(cum)
+    if not points:
+        return ""
     min_v, max_v = min(points + [0]), max(points + [0])
     rng = (max_v - min_v) or 1
     n = len(points)
-    def x(i): return pad + (i / max(n - 1, 1)) * (width - 2 * pad)
-    def y(v): return height - pad - ((v - min_v) / rng) * (height - 2 * pad)
+
+    def x(i):
+        return pad + (i / max(n - 1, 1)) * (width - 2 * pad)
+
+    def y(v):
+        return height - pad - ((v - min_v) / rng) * (height - 2 * pad)
+
     poly = " ".join(f"{x(i):.1f},{y(v):.1f}" for i, v in enumerate(points))
-    zero_y = y(0)
-    color = "#4ade80" if points[-1] >= 0 else "#f87171"
-    area = f"{pad},{y(0):.1f} " + poly + f" {x(n-1):.1f},{y(0):.1f}"
-    return f'''<svg viewBox="0 0 {width} {height}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto">
-  <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+    color = "#2fd47a" if points[-1] >= 0 else "#ff5d73"
+    area = f"{pad},{y(0):.1f} " + poly + f" {x(n - 1):.1f},{y(0):.1f}"
+
+    grid = ""
+    for i in range(1, 4):
+        gv = min_v + rng * i / 4
+        gy = y(gv)
+        grid += (f'<line x1="{pad}" y1="{gy:.1f}" x2="{width - pad}" y2="{gy:.1f}" '
+                 f'stroke="var(--line)" stroke-width="1"/>'
+                 f'<text x="{pad - 6}" y="{gy + 4:.1f}" fill="var(--muted)" font-size="10" '
+                 f'text-anchor="end">{gv:+.0f}</text>')
+
+    first_date = (sorted_t[0]["close_time"] or "")[:10]
+    last_date = (sorted_t[-1]["close_time"] or "")[:10]
+    mid_date = (sorted_t[n // 2]["close_time"] or "")[:10]
+    x_labels = (f'<text x="{pad}" y="{height - 12}" fill="var(--muted)" font-size="10">{esc(first_date)}</text>'
+                f'<text x="{width / 2}" y="{height - 12}" fill="var(--muted)" font-size="10" '
+                f'text-anchor="middle">{esc(mid_date)}</text>'
+                f'<text x="{width - pad}" y="{height - 12}" fill="var(--muted)" font-size="10" '
+                f'text-anchor="end">{esc(last_date)}</text>')
+
+    return f'''<svg viewBox="0 0 {width} {height}" xmlns="http://www.w3.org/2000/svg">
+  <defs><linearGradient id="eq" x1="0" y1="0" x2="0" y2="1">
     <stop offset="0%" stop-color="{color}" stop-opacity="0.35"/>
     <stop offset="100%" stop-color="{color}" stop-opacity="0"/>
   </linearGradient></defs>
-  <line x1="{pad}" y1="{zero_y:.1f}" x2="{width-pad}" y2="{zero_y:.1f}"
-        stroke="#475569" stroke-dasharray="4 4" stroke-width="1"/>
-  <polygon points="{area}" fill="url(#g)"/>
-  <polyline points="{poly}" fill="none" stroke="{color}" stroke-width="2.2"/>
-  <text x="{pad}" y="{pad-10}" fill="#94a3b8" font-size="11">max {max_v:+.2f}</text>
-  <text x="{width-pad}" y="{pad-10}" fill="#94a3b8" font-size="11"
-        text-anchor="end">final {points[-1]:+.2f}</text>
-  <text x="{pad}" y="{height-10}" fill="#94a3b8" font-size="11">min {min_v:+.2f}</text>
+  {grid}
+  <line x1="{pad}" y1="{y(0):.1f}" x2="{width - pad}" y2="{y(0):.1f}"
+        stroke="var(--muted)" stroke-dasharray="4 4" stroke-width="1"/>
+  <polygon points="{area}" fill="url(#eq)"/>
+  <polyline points="{poly}" fill="none" stroke="{color}" stroke-width="2.4"
+            stroke-linejoin="round" stroke-linecap="round"/>
+  <circle cx="{x(n - 1):.1f}" cy="{y(points[-1]):.1f}" r="4" fill="{color}"/>
+  <text x="{width - pad}" y="{max(14, y(max_v) - 8):.1f}" fill="var(--muted)" font-size="10.5"
+        text-anchor="end">final {points[-1]:+.2f}  ·  peak {max_v:+.2f}</text>
+  {x_labels}
 </svg>'''
 
 
-def _bar_chart(title, items):
-    if not items: return ""
+def _bar_rows(items, mode="money"):
+    """Render horizontal bar rows. mode='money' colors by sign, 'count' uses accent."""
+    if not items:
+        return "<p class='muted'>No data.</p>"
     max_abs = max(abs(v) for _, v in items) or 1
-    rows = []
+    rows_html = []
     for label, value in items:
         pct = abs(value) / max_abs * 100
-        color = "#4ade80" if value >= 0 else "#f87171"
-        rows.append(
+        if mode == "count":
+            color = "var(--accent)"
+            txt = str(int(value))
+        else:
+            color = "var(--pos)" if value >= 0 else "var(--neg)"
+            txt = f"{value:+.2f}"
+        rows_html.append(
             f'<div class="bar-row">'
             f'<div class="bar-label" title="{esc(label)}">{esc(label)}</div>'
             f'<div class="bar-track"><div class="bar-fill" '
             f'style="width:{pct:.1f}%;background:{color}"></div></div>'
-            f'<div class="bar-value" style="color:{color}">{value:+.2f}</div></div>')
-    return f"<h3>{esc(title)}</h3>" + "".join(rows)
+            f'<div class="bar-value" style="color:{color}">{txt}</div></div>')
+    return "".join(rows_html)
 
 
 def _psych_color(score):
-    if score is None: return "neu"
-    if score >= 75: return "pos"
-    if score >= 50: return "neu"
+    if score is None:
+        return "neu"
+    if score >= 75:
+        return "pos"
+    if score >= 50:
+        return "neu"
     return "neg"
 
 
+def _psych_track_color(score):
+    if score is None:
+        return "var(--muted)"
+    if score >= 75:
+        return "var(--pos)"
+    if score >= 50:
+        return "var(--warn)"
+    return "var(--neg)"
+
+
 def _psych_badge_class(score):
-    if score is None: return "p-y"
-    if score >= 75: return "p-g"
-    if score >= 50: return "p-y"
+    if score is None:
+        return "p-y"
+    if score >= 75:
+        return "p-g"
+    if score >= 50:
+        return "p-y"
     return "p-r"
+
+
+def _group_table(groups, title):
+    """Static breakdown table (strategies / symbols)."""
+    rows = []
+    for name, v in sorted(groups.items(), key=lambda x: x[1]["net_profit"], reverse=True):
+        if not v["trades"]:
+            continue
+        cls = "pos" if v["net_profit"] >= 0 else "neg"
+        wr_cls = "pos" if v["win_rate"] >= 50 else ("neg" if v["win_rate"] < 40 else "neu")
+        rows.append(
+            f'<tr><td><b>{esc(name)}</b></td>'
+            f'<td class="r">{v["trades"]}</td>'
+            f'<td class="r">{v["wins"]}</td>'
+            f'<td class="r">{v["losses"]}</td>'
+            f'<td class="r {wr_cls}">{v["win_rate"]}%</td>'
+            f'<td class="r {cls}"><b>{v["net_profit"]:+.2f}</b></td>'
+            f'<td class="r pos">{v["avg_win"]:+.2f}</td>'
+            f'<td class="r neg">{v["avg_loss"]:+.2f}</td></tr>')
+    if not rows:
+        return "<p class='muted'>No data.</p>"
+    return f'''<div class="tbl-wrap"><table>
+  <thead><tr><th>{esc(title)}</th><th class="r">Trades</th><th class="r">W</th>
+    <th class="r">L</th><th class="r">Win %</th><th class="r">Net</th>
+    <th class="r">Avg win</th><th class="r">Avg loss</th></tr></thead>
+  <tbody>{"".join(rows)}</tbody></table></div>'''
 
 
 def render_html_report(payload, analysis, filepath=REPORT_HTML):
@@ -813,152 +1171,303 @@ def render_html_report(payload, analysis, filepath=REPORT_HTML):
     s = payload["summary"]
     stats = payload["stats"]
     history = payload["history"]
+    open_positions = payload.get("open_positions", [])
     o = stats["overall"]
 
+    # ---- derived metrics ----
+    n = o["trades"]
+    expectancy = (round((o["wins"] / n) * o["avg_win"] + (o["losses"] / n) * o["avg_loss"], 2)
+                  if n else 0)
+    exp_cls = "pos" if expectancy >= 0 else "neg"
+    best = max((t["net_profit"] for t in history), default=0)
+    worst = min((t["net_profit"] for t in history), default=0)
+    durs = [t["duration_seconds"] for t in history if t.get("duration_seconds")]
+    avg_dur = format_duration(sum(durs) / len(durs)) if durs else "—"
     net_cls = "pos" if o["net_profit"] >= 0 else "neg"
-    cards = f'''
-    <div class="card"><div class="label">Net Result</div>
-      <div class="value {net_cls}">{o['net_profit']:+.2f} {esc(acc['currency'])}</div></div>
-    <div class="card"><div class="label">Win Rate</div>
-      <div class="value neu">{o['win_rate']}%</div></div>
-    <div class="card"><div class="label">Trades</div>
-      <div class="value neu">{o['trades']}</div></div>
-    <div class="card"><div class="label">Profit Factor</div>
-      <div class="value neu">{analysis['profit_factor']}</div></div>
-    <div class="card"><div class="label">Risk / Reward</div>
-      <div class="value neu">{analysis['risk_reward']}</div></div>
-    <div class="card"><div class="label">Open Positions</div>
-      <div class="value neu">{s['open_positions']}</div></div>
-    '''
 
+    # ---- KPI cards ----
+    cards = "".join([
+        f'<div class="card"><div class="label">Net result</div>'
+        f'<div class="value {net_cls}">{o["net_profit"]:+.2f} {esc(acc["currency"])}</div>'
+        f'<div class="sub">Gross {o["gross_profit"]:+.2f} / {o["gross_loss"]:+.2f}</div></div>',
+
+        f'<div class="card"><div class="label">Win rate</div>'
+        f'<div class="value neu">{o["win_rate"]}%</div>'
+        f'<div class="sub">{o["wins"]} wins · {o["losses"]} losses</div></div>',
+
+        f'<div class="card"><div class="label">Trades</div>'
+        f'<div class="value neu">{n}</div>'
+        f'<div class="sub">Avg duration {avg_dur}</div></div>',
+
+        f'<div class="card"><div class="label">Profit factor</div>'
+        f'<div class="value neu">{esc(analysis["profit_factor"])}</div>'
+        f'<div class="sub">Gross profit ÷ gross loss</div></div>',
+
+        f'<div class="card"><div class="label">Risk / reward</div>'
+        f'<div class="value neu">{analysis["risk_reward"]}</div>'
+        f'<div class="sub">Avg {o["avg_win"]:+.2f} vs {o["avg_loss"]:+.2f}</div></div>',
+
+        f'<div class="card"><div class="label">Expectancy</div>'
+        f'<div class="value {exp_cls}">{expectancy:+.2f}</div>'
+        f'<div class="sub">Per trade, {esc(acc["currency"])}</div></div>',
+    ])
+
+    # ---- insights / recommendations ----
     insights_html = "".join(
-        f'<li class="{i["type"]}"><div class="t">{esc(i["title"])}</div>'
-        f'<div class="b">{esc(i["body"])}</div></li>'
-        for i in analysis["insights"])
+        f'<div class="ins {i["type"]}"><div class="t">{esc(i["title"])}</div>'
+        f'<div class="b">{esc(i["body"])}</div></div>'
+        for i in analysis["insights"]) or '<div class="ins info"><div class="b">No insights.</div></div>'
     recs_html = "".join(f"<li>{esc(r)}</li>" for r in analysis["recommendations"])
-    grade_cls = analysis["grade"].replace("+", "\\+")
+    grade_cls = "g-" + analysis["grade"].lower().replace("+", "p")
 
-    ai_block = f'''
-    <div class="ai-panel">
-      <div class="ai-header">
-        <div class="grade {grade_cls}">{esc(analysis['grade'])}</div>
-        <div style="flex:1">
-          <div class="score-bar"><div class="score-fill" style="width:{analysis['score']}%"></div></div>
-          <div class="score-txt">AI Score: {analysis['score']} / 100</div>
-        </div>
-      </div>
-      <h3>Insights</h3>
-      <ul class="insights">{insights_html or "<li class='info'>No insights.</li>"}</ul>
-      <h3 style="margin-top:20px">Recommendations</h3>
-      <ul class="recs">{recs_html}</ul>
-    </div>
-    '''
-
-    # ---- Psychology panel ----
-    psych_html = ""
+    # ---- psychology ----
     pa = stats.get("psychology_averages")
+    psych_cards = ""
     if pa:
-        cards_p = ""
-        for label, key in [("Mood","mood_score"),("Focus","focus_score"),
-                           ("Stress","stress_score"),("Suitability","suitability_score"),
-                           ("Discipline","discipline_score"),("Overall","overall_score")]:
+        for label, key in [("Mood", "mood_score"), ("Focus", "focus_score"),
+                           ("Stress", "stress_score"), ("Suitability", "suitability_score"),
+                           ("Discipline", "discipline_score"), ("Overall", "overall_score")]:
             v = pa[key]
-            cards_p += (f'<div class="psych-card"><div class="pl">{label}</div>'
-                        f'<div class="pv {_psych_color(v)}">{v}</div>'
-                        f'<div class="ps">/100</div></div>')
-        psych_html = f'<div class="psych-grid">{cards_p}</div>'
+            psych_cards += (
+                f'<div class="pcard"><div class="pl">{label}</div>'
+                f'<div class="pv {_psych_color(v)}">{v}</div>'
+                f'<div class="track"><i style="width:{v}%;background:{_psych_track_color(v)}"></i></div>'
+                f'<div class="ps">avg /100</div></div>')
+    psych_grid = (f'<div class="pgrid">{psych_cards}</div>' if psych_cards else
+                  "<p class='muted'>No psychology data collected.</p>")
 
-    # ---- Psychology comparison chart ----
     ps = stats["by_psychology"]
-    psych_items = [(k.replace("_", " ").title(), v["net_profit"])
-                   for k, v in ps.items() if v["trades"] > 0]
-    psych_items.sort(key=lambda x: x[1], reverse=True)
-    psych_chart = _bar_chart("Net P/L by Psychology Flag", psych_items)
+    psych_items = sorted([(k.replace("_", " ").title(), v["net_profit"])
+                          for k, v in ps.items() if v["trades"] > 0],
+                         key=lambda x: x[1], reverse=True)
+    psych_rows = []
+    for k, v in sorted(ps.items(), key=lambda x: x[1]["net_profit"], reverse=True):
+        if not v["trades"]:
+            continue
+        cls = "pos" if v["net_profit"] >= 0 else "neg"
+        psych_rows.append(
+            f'<tr><td><b>{esc(k.replace("_", " ").title())}</b></td>'
+            f'<td class="r">{v["trades"]}</td>'
+            f'<td class="r">{v["win_rate"]}%</td>'
+            f'<td class="r {cls}"><b>{v["net_profit"]:+.2f}</b></td></tr>')
+    psych_table = (
+        f'<div class="tbl-wrap"><table><thead><tr><th>Flag</th><th class="r">Trades</th>'
+        f'<th class="r">Win %</th><th class="r">Net</th></tr></thead>'
+        f'<tbody>{"".join(psych_rows)}</tbody></table></div>' if psych_rows else "")
 
-    # ---- Charts ----
+    # ---- charts ----
     strat_items = sorted([(k, v["net_profit"]) for k, v in stats["by_strategy"].items()
                           if v["trades"] > 0], key=lambda x: x[1], reverse=True)
     sym_items = sorted([(k, v["net_profit"]) for k, v in stats["by_symbol"].items()
                         if v["trades"] > 0], key=lambda x: x[1], reverse=True)
-
-    charts = f'''
-    <div class="chart-box"><h3>Equity Curve</h3>{_svg_equity_curve(history)}</div>
-    <div class="grid2" style="margin-top:20px">
-      <div class="chart-box">{_bar_chart("Net P/L by Strategy", strat_items)}</div>
-      <div class="chart-box">{_bar_chart("Net P/L by Symbol", sym_items)}</div>
-    </div>
-    <div class="chart-box" style="margin-top:20px">{psych_chart}</div>
-    '''
-
-    # ---- Trade table with psychology ----
-    rows = []
+    exits = defaultdict(int)
     for t in history:
-        cls = "pos" if t["net_profit"] >= 0 else "neg"
-        p = t.get("psychology")
-        if p:
-            pscore = p["overall_score"]
-            badge_cls = _psych_badge_class(pscore)
-            psych_cell = f'<span class="tag {badge_cls}">{pscore}</span>'
-        else:
-            psych_cell = '<span class="tag">—</span>'
-        rows.append(
-            f'<tr>'
-            f'<td>{esc(t["open_time"])}</td>'
-            f'<td>{esc(t["symbol"])}</td>'
-            f'<td>{esc(t["type"])}</td>'
-            f'<td class="r">{t["volume"]}</td>'
-            f'<td>{esc(t["exit_reason"])}</td>'
-            f'<td><span class="tag">{esc(t["strategy"] or "—")}</span></td>'
-            f'<td>{psych_cell}</td>'
-            f'<td class="r {cls}">{t["net_profit"]:+.2f}</td>'
-            f'</tr>')
+        exits[t.get("exit_reason") or "unknown"] += 1
+    exit_items = sorted(exits.items(), key=lambda x: x[1], reverse=True)
 
-    table = f'''
-    <div class="tbl-wrap"><table>
-      <thead><tr>
-        <th>Open</th><th>Symbol</th><th>Type</th><th class="r">Vol</th>
-        <th>Exit</th><th>Strategy</th><th>Psych</th><th class="r">Net</th>
-      </tr></thead>
-      <tbody>{"".join(rows)}</tbody>
-    </table></div>
-    '''
+    # ---- trade table data (embedded as JSON for the JS table) ----
+    table_rows = []
+    for t in history:
+        p = t.get("psychology")
+        table_rows.append({
+            "open": t["open_time"] or "", "close": t["close_time"] or "",
+            "symbol": t["symbol"], "type": t["type"], "vol": t["volume"],
+            "exit": t["exit_reason"], "duration": t["duration"] or "",
+            "strategy": t["strategy"] or "Untagged",
+            "psych": p["overall_score"] if p else None,
+            "net": t["net_profit"], "comment": t["comment"] or "",
+        })
+    open_rows = [{
+        "ticket": p["ticket"], "symbol": p["symbol"], "type": p["type"],
+        "volume": p["volume"], "open_time": p["open_time"] or "",
+        "open_price": p["open_price"], "sl": p["sl"], "tp": p["tp"],
+        "current_price": p["current_price"], "swap": p["swap"],
+        "profit": p["profit"], "comment": p["comment"] or "",
+    } for p in open_positions]
+    data_js = json.dumps({"trades": table_rows, "open": open_rows},
+                         ensure_ascii=False, default=str).replace("</", "<\\/")
+
+    # ---- open positions table ----
+    if open_rows:
+        op_body = "".join(
+            f'<tr><td>{esc(p["ticket"])}</td><td><b>{esc(p["symbol"])}</b></td>'
+            f'<td>{esc(p["type"])}</td><td class="r">{p["volume"]}</td>'
+            f'<td>{esc(p["open_time"])}</td><td class="r">{p["open_price"]}</td>'
+            f'<td class="r">{p["current_price"]}</td><td class="r">{p["sl"] or "—"}</td>'
+            f'<td class="r">{p["tp"] or "—"}</td>'
+            f'<td class="r">{p["swap"]:+.2f}</td>'
+            f'<td class="r {"pos" if p["profit"] >= 0 else "neg"}"><b>{p["profit"]:+.2f}</b></td>'
+            f'<td class="comment">{esc(p["comment"])}</td></tr>'
+            for p in open_rows)
+        open_html = f'''<div class="tbl-wrap"><table>
+  <thead><tr><th>Ticket</th><th>Symbol</th><th>Type</th><th class="r">Vol</th><th>Open</th>
+    <th class="r">Open px</th><th class="r">Current</th><th class="r">SL</th><th class="r">TP</th>
+    <th class="r">Swap</th><th class="r">Profit</th><th>Comment</th></tr></thead>
+  <tbody>{op_body}</tbody></table></div>'''
+    else:
+        open_html = "<p class='muted'>No open positions.</p>"
+
+    # ---- navigation ----
+    nav_items = [("overview", "▦", "Overview"), ("ai", "✦", "AI analysis"),
+                 ("psych", "◍", "Psychology"), ("charts", "▲", "Charts"),
+                 ("trades", "≡", "Trades"), ("open", "◌", "Open positions")]
+    nav_html = "".join(
+        f'<button class="nav-btn{" active" if i == 0 else ""}" '
+        f'data-target="{tid}"><i>{ic}</i>{esc(label)}</button>'
+        for i, (tid, ic, label) in enumerate(nav_items))
+
+    th_cols = [("open", "Open", ""), ("close", "Close", ""), ("symbol", "Symbol", ""),
+               ("type", "Type", ""), ("vol", "Vol", "r"), ("exit", "Exit", ""),
+               ("duration", "Dur", ""), ("strategy", "Strategy", ""),
+               ("psych", "Psych", "r"), ("net", "Net", "r"), ("comment", "Comment", "")]
+    thead_html = "".join(
+        f'<th class="sortable{(" " + c) if c else ""}" data-key="{k}">'
+        f'{esc(label)}<span class="arw">&#8645;</span></th>'
+        for k, label, c in th_cols)
 
     html = f'''<!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Trading Report — {esc(acc["login"])}</title>
 <style>{_CSS}</style>
+<noscript><style>section{{display:block!important}}</style></noscript>
 </head>
 <body>
-<div class="wrap">
-  <header>
-    <h1>AI Trading Report</h1>
-    <p class="muted">Account {esc(acc["login"])} · {esc(acc["server"])} ·
-       Balance {acc["balance"]} {esc(acc["currency"])} ·
-       Equity {acc["equity"]} {esc(acc["currency"])} ·
-       Leverage 1:{acc["leverage"]}</p>
-    <p class="muted">Generated {esc(payload["exported_at"])}</p>
-  </header>
+<div class="app">
+  <aside class="side">
+    <div class="brand">
+      <div class="logo">W</div>
+      <div><b>Winrate Analyse</b><small>AI trading report</small></div>
+    </div>
+    {nav_html}
+    <div class="foot">Generated<br>{esc(payload["exported_at"])}</div>
+  </aside>
 
-  <h2>Summary</h2>
-  <div class="cards">{cards}</div>
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <h1>Account {esc(acc["login"])}</h1>
+        <div class="chips">
+          <span class="chip">Server <b>{esc(acc["server"])}</b></span>
+          <span class="chip">Balance <b>{acc["balance"]} {esc(acc["currency"])}</b></span>
+          <span class="chip">Equity <b>{acc["equity"]} {esc(acc["currency"])}</b></span>
+          <span class="chip">Leverage <b>1:{acc["leverage"]}</b></span>
+          <span class="chip">Open <b>{s["open_positions"]}</b></span>
+        </div>
+      </div>
+      <button class="icon-btn" id="themeBtn" type="button">Light mode</button>
+    </div>
 
-  <h2>AI Analysis</h2>
-  {ai_block}
+    <section id="overview" class="show">
+      <h2 class="sec">Summary</h2>
+      <div class="grid-kpi">{cards}</div>
+      <div class="two" style="margin-top:16px">
+        <div class="panel chart"><h3>Equity curve</h3>{_svg_equity_curve(history)}</div>
+        <div class="panel">
+          <h3>Win / loss distribution</h3>
+          <div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap">
+            <div class="donut" style="--w:{o['win_rate']}">
+              <div class="donut-in"><div>{o['win_rate']}%<small>{o['wins']}W / {o['losses']}L</small></div></div>
+            </div>
+            <div class="kv" style="grid-template-columns:1fr 1fr;flex:1;min-width:210px">
+              <div><span>Best trade</span><b class="pos">{best:+.2f}</b></div>
+              <div><span>Worst trade</span><b class="neg">{worst:+.2f}</b></div>
+              <div><span>Avg duration</span><b>{avg_dur}</b></div>
+              <div><span>Expectancy</span><b class="{exp_cls}">{expectancy:+.2f}</b></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
 
-  <h2>Psychology & Discipline</h2>
-  {psych_html or "<p class='muted'>No psychology data collected.</p>"}
+    <section id="ai">
+      <h2 class="sec">AI analysis</h2>
+      <div class="panel">
+        <div class="ai-top">
+          <div class="ring" style="--v:{analysis['score']}">
+            <div class="ring-in">
+              <div><div class="grade {grade_cls}">{esc(analysis['grade'])}</div>
+              <small>{analysis['score']} / 100</small></div>
+            </div>
+          </div>
+          <div style="flex:1;min-width:250px">
+            <div class="bar-line"><i style="width:{analysis['score']}%"></i></div>
+            <div class="kv" style="margin-top:14px">
+              <div><span>Profit factor</span><b>{esc(analysis['profit_factor'])}</b></div>
+              <div><span>Risk / reward</span><b>{analysis['risk_reward']}</b></div>
+              <div><span>Win rate</span><b>{o['win_rate']}%</b></div>
+              <div><span>Expectancy</span><b class="{exp_cls}">{expectancy:+.2f}</b></div>
+            </div>
+          </div>
+        </div>
+        <h3 style="margin-top:24px">Insights</h3>
+        <div class="ins-grid">{insights_html}</div>
+        <h3 style="margin-top:24px">Recommendations</h3>
+        <ul class="recs">{recs_html}</ul>
+      </div>
+    </section>
 
-  <h2>Charts</h2>
-  {charts}
+    <section id="psych">
+      <h2 class="sec">Psychology &amp; discipline</h2>
+      {psych_grid}
+      <div class="two" style="margin-top:16px">
+        <div class="panel bars"><h3>Net P/L by psychology flag</h3>{_bar_rows(psych_items)}</div>
+        <div class="panel"><h3>Flag breakdown</h3>{psych_table or "<p class='muted'>No data.</p>"}</div>
+      </div>
+    </section>
 
-  <h2>Trade History ({len(history)})</h2>
-  {table}
+    <section id="charts">
+      <h2 class="sec">Performance breakdown</h2>
+      <div class="two">
+        <div class="panel bars"><h3>Net P/L by strategy</h3>{_bar_rows(strat_items)}</div>
+        <div class="panel bars"><h3>Net P/L by symbol</h3>{_bar_rows(sym_items)}</div>
+      </div>
+      <div class="two" style="margin-top:16px">
+        <div class="panel bars"><h3>Exit reasons (count)</h3>{_bar_rows(exit_items, mode="count")}</div>
+        <div class="panel chart"><h3>Equity curve</h3>{_svg_equity_curve(history)}</div>
+      </div>
+      <div class="panel" style="margin-top:16px">
+        <h3>By strategy</h3>{_group_table(stats["by_strategy"], "Strategy")}
+      </div>
+      <div class="panel">
+        <h3>By symbol</h3>{_group_table(stats["by_symbol"], "Symbol")}
+      </div>
+    </section>
 
-  <footer>Generated by winrate-analyse · {esc(datetime.now(timezone.utc).isoformat())}</footer>
+    <section id="trades">
+      <h2 class="sec">Trade history ({len(history)})</h2>
+      <div class="toolbar">
+        <input type="search" id="q" placeholder="Search symbol, strategy, exit, comment…">
+        <select id="fStrategy"><option value="all">All strategies</option></select>
+        <select id="fResult">
+          <option value="all">All results</option>
+          <option value="win">Wins only</option>
+          <option value="loss">Losses only</option>
+        </select>
+        <button class="icon-btn" id="csvBtn" type="button">Export CSV</button>
+      </div>
+      <p class="summary-line" id="tblSummary"></p>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr>{thead_html}</tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+        <div class="empty" id="emptyMsg">No trades match the current filters.</div>
+      </div>
+    </section>
+
+    <section id="open">
+      <h2 class="sec">Open positions ({len(open_rows)})</h2>
+      {open_html}
+    </section>
+
+    <footer>Generated by winrate-analyse · {esc(datetime.now(timezone.utc).isoformat())}</footer>
+  </main>
 </div>
+<script>window.__REPORT__={data_js};</script>
+<script>{_JS}</script>
 </body>
 </html>'''
 
@@ -970,7 +1479,58 @@ def render_html_report(payload, analysis, filepath=REPORT_HTML):
 # ==================================================================
 # Main export
 # ==================================================================
+def load_existing_trades(filepath):
+    """Load a previously exported trades payload. Returns None if missing/broken."""
+    if not os.path.exists(filepath):
+        return None
+    try:
+        with open(filepath, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, IOError):
+        return None
+    if not isinstance(data, dict) or not data.get("history"):
+        return None
+    data.setdefault("open_positions", [])
+    data.setdefault("stats", compute_stats(data["history"]))
+    return data
+
+
+def _render_saved_report(payload, json_path, html_path):
+    """Re-render the HTML report from an already-saved payload (no MT5 needed)."""
+    print("\nRunning AI analysis...")
+    analysis = ai_analyze(payload)
+    render_html_report(payload, analysis, html_path)
+    o = payload["stats"]["overall"]
+    currency = payload.get("account", {}).get("currency", "")
+    print(f"\nUsed data from    : '{json_path}' (not re-exported)")
+    print(f"HTML report       → '{html_path}'")
+    print(f"  Trades         : {len(payload['history'])}")
+    print(f"  Open positions : {len(payload.get('open_positions', []))}")
+    print(f"  Net result     : {o['net_profit']} {currency}")
+    print(f"  Win rate       : {o['win_rate']}%  ({o['wins']}W / {o['losses']}L)")
+    print(f"  AI grade       : {analysis['grade']} ({analysis['score']}/100)")
+    if payload["stats"].get("psychology_averages"):
+        pa = payload["stats"]["psychology_averages"]
+        print(f"  Psychology     : {pa['psychology_score']}/100 "
+              f"| Discipline: {pa['discipline_score']}/100")
+
+
 def export_mt5_trades(json_path=TRADES_DB, html_path=REPORT_HTML, ask_strategies=True):
+    # ---- Existing trades.json? Ask before pulling fresh data from MT5 ----
+    existing = load_existing_trades(json_path)
+    if existing:
+        exported_at = str(existing.get("exported_at", "unknown"))[:19].replace("T", " ")
+        print(f"\nFound existing trade database '{json_path}' with "
+              f"{len(existing['history'])} trade(s) (exported {exported_at}).")
+        try:
+            answer = input("Re-export fresh data from MetaTrader 5? (y/n): ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            answer = "y"
+        if answer not in ("y", "yes"):
+            print("Skipping MT5 export. Re-rendering report from saved data.")
+            _render_saved_report(existing, json_path, html_path)
+            return
+
     if not MT5_AVAILABLE:
         print("\n[!] MetaTrader5 package not installed.")
         print("    Install with:  pip install MetaTrader5")
