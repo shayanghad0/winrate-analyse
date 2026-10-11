@@ -1,0 +1,37 @@
+{
+    "summary": {
+        "total_trades": 33,
+        "open_positions": 2,
+        "net_result": 1400.95,
+        "win_rate": 54.55
+    },
+    "stats": {
+        "overall":     { "trades": 33, "wins": 18, "losses": 15, "win_rate": 54.55, ... },
+        "by_symbol":   { "EURUSD": {...}, "GBPUSD": {...} },
+        "by_strategy": { "Supply and demand zone": {...}, "Engulfing": {...} }
+    },
+    "history": [
+        {
+            "position_id": 555123456,
+            "symbol": "EURUSD",
+            "type": "buy",
+            "volume": 0.1,
+            "open_time": "2026-10-05 09:15:00",
+            "open_price": 1.0955,
+            "sl": 1.09,
+            "tp": 1.105,
+            "close_time": "2026-10-05 11:30:00",
+            "close_price": 1.098,
+            "commission": -0.7,
+            "swap": 0.0,
+            "profit": 25.0,
+            "net_profit": 24.3,
+            "comment": "Supply and demand zone",
+            "magic": 0,
+            "exit_reason": "manual",
+            "duration": "2h 15m",
+            "duration_seconds": 8100,
+            "strategy": "Supply and demand zone"
+        }
+    ]
+}
