@@ -123,8 +123,59 @@ def _serialize(obj):
     return obj
 
 
+def _group_deals_into_trades(deals):
+    """Group MT5 deals into one entry per trade (position)."""
+    trades = {}
+
+    for deal in deals:
+        pid = deal.position_id
+        if pid == 0:
+            # Balance operations (deposit/withdraw/credit) — skip
+            continue
+
+        if pid not in trades:
+            trades[pid] = {
+                "position_id": pid,
+                "symbol": deal.symbol,
+                "type": deal.type,          # 0 = buy, 1 = sell
+                "volume": 0.0,
+                "open_time": None,
+                "close_time": None,
+                "open_price": None,
+                "close_price": None,
+                "profit": 0.0,
+                "commission": 0.0,
+                "swap": 0.0,
+                "comment": "",
+                "magic": deal.magic,
+                "deals": [],                # raw deals for reference
+            }
+
+        t = trades[pid]
+        t["deals"].append(_serialize(deal))
+        t["volume"] += deal.volume
+        t["profit"] += deal.profit
+        t["commission"] += deal.commission
+        t["swap"] += deal.swap
+
+        # Entry deal (DEAL_ENTRY_IN = 0)
+        if deal.entry == 0:
+            t["open_time"] = deal.time
+            t["open_price"] = deal.price
+        # Exit deal (DEAL_ENTRY_OUT = 1) or OUT_BY (3)
+        elif deal.entry in (1, 3):
+            t["close_time"] = deal.time
+            t["close_price"] = deal.price
+
+        if deal.comment:
+            t["comment"] = deal.comment
+
+    # Sort by open time
+    return sorted(trades.values(), key=lambda x: x["open_time"] or 0)
+
+
 def export_mt5_trades(filepath=TRADES_DB):
-    """Connect to MetaTrader5 and export all closed deals + open positions."""
+    """Connect to MetaTrader5 and export all trades (grouped by position)."""
     if not MT5_AVAILABLE:
         print("\n[!] MetaTrader5 package not installed.")
         print("    Install it with:  pip install MetaTrader5")
@@ -139,21 +190,17 @@ def export_mt5_trades(filepath=TRADES_DB):
     try:
         account = mt5.account_info()
         if account is None:
-            print("[!] Could not read account info. Are you logged in on the terminal?")
+            print("[!] Could not read account info. Are you logged in?")
             return
 
-        # --- Fetch history deals (closed trades) ---
         from_date = datetime(2000, 1, 1)
         to_date = datetime.now(timezone.utc)
-        deals = mt5.history_deals_get(from_date, to_date)
-        if deals is None:
-            print(f"[!] history_deals_get() failed, error code = {mt5.last_error()}")
-            deals = []
 
-        # --- Fetch currently open positions ---
-        positions = mt5.positions_get()
-        if positions is None:
-            positions = []
+        raw_deals = mt5.history_deals_get(from_date, to_date) or []
+        positions = mt5.positions_get() or []
+
+        # Group deals → real trades
+        trades = _group_deals_into_trades(raw_deals)
 
         payload = {
             "exported_at": datetime.now(timezone.utc).isoformat(),
@@ -166,16 +213,18 @@ def export_mt5_trades(filepath=TRADES_DB):
                 "equity": account.equity,
                 "leverage": account.leverage,
             },
-            "closed_deals_count": len(deals),
+            "trades_count": len(trades),
             "open_positions_count": len(positions),
-            "closed_deals": [_serialize(d) for d in deals],
+            "raw_deals_count": len(raw_deals),      # for debugging
+            "trades": trades,
             "open_positions": [_serialize(p) for p in positions],
         }
 
         with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=4, ensure_ascii=False)
+            json.dump(payload, f, indent=4, ensure_ascii=False, default=str)
 
-        print(f"\nExported {len(deals)} closed deal(s) and {len(positions)} open position(s).")
+        print(f"\nGrouped {len(raw_deals)} deals → {len(trades)} trade(s).")
+        print(f"Open positions: {len(positions)}")
         print(f"Saved to '{filepath}'.")
     finally:
         mt5.shutdown()
